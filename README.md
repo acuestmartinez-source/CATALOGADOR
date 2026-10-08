@@ -17,6 +17,7 @@ Copiar `.env.ejemplo` a `.env` y poner `ANTHROPIC_API_KEY`. El Gestor y `Z:\IMAG
 - Una sola obra, para probar: `./.venv/Scripts/python.exe piloto.py catalogar --solo TDP-008194`
 - El lote entero (repetible, no repite las ya hechas): `./.venv/Scripts/python.exe piloto.py catalogar`
 - Con Opus en las dudosas: `… catalogar --modelo claude-opus-5-5 --solo REF REF`
+- Con lo que una persona encontró a mano (p. ej. el resultado de la búsqueda por imagen de ukiyo-e.org): una fila `referencia;url;nota` en `piloto/pistas.csv` (ejemplo al lado) y `… catalogar --solo REF --repetir`; para fotos sueltas, `… identificar foto.jpg --medidas 35x24 --pista URL`
 - Sin web, como línea base: `… catalogar --sin-web` (resultados en `resultados/claude-sonnet-5-5_sin_web/`)
 - El informe: `./.venv/Scripts/python.exe piloto.py informe [--modelo <carpeta>]` → `resultados/<modelo>/informe.md` y `resumen.csv`
 - La página de revisión, con foto, Gestor y agente lado a lado (local, fuera de git): `./.venv/Scripts/python.exe revision.py claude-sonnet-5-5_v2` → `resultados/claude-sonnet-5-5_v2/revision.html`

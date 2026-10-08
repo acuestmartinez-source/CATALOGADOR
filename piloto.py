@@ -352,7 +352,11 @@ def consulta_ukiyoe(ficha: dict | None) -> str | None:
     artista = "".join(c for c in unicodedata.normalize("NFKD", artista) if not unicodedata.combining(c))
     partes = [w for w in re.sub(r"[^\w\s-]", " ", artista).split()
               if w.lower() not in ("utagawa", "toyohara", "tsukioka", "kitagawa", "katsushika")][:2]
-    extra = _campo(ficha, "serie", "romaji") or _campo(ficha, "titulo", "romaji") or ""
+    actores = _campo(ficha, "kabuki", "actores", defecto=[]) or []
+    actor = next((a.get("actor") for a in actores if isinstance(a, dict) and a.get("actor")), "")
+    extra = (_campo(ficha, "serie", "romaji") or _campo(ficha, "titulo", "romaji") or actor
+             or _campo(ficha, "titulo", "castellano") or "")
+    extra = re.split(r"[(,;:]", extra)[0]
     extra = "".join(c for c in unicodedata.normalize("NFKD", extra) if not unicodedata.combining(c))
     palabras = partes + [w for w in re.sub(r"[^\w\s-]", " ", extra).split() if len(w) > 2][:4]
     if not palabras:
