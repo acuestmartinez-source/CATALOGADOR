@@ -137,6 +137,17 @@ def leer_muestra() -> list[str]:
 
 # ---------------------------------------------------------------- catalogar
 
+def cliente():
+    """El cliente de la API. Una clave de organización necesita además ANTHROPIC_WORKSPACE_ID."""
+    import anthropic
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        sys.exit("Falta ANTHROPIC_API_KEY en .env.")
+    cabeceras = {}
+    if os.environ.get("ANTHROPIC_WORKSPACE_ID"):
+        cabeceras["anthropic-workspace-id"] = os.environ["ANTHROPIC_WORKSPACE_ID"]
+    return anthropic.Anthropic(default_headers=cabeceras)
+
+
 def bloque_imagen(ruta: Path) -> dict:
     tipo = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}[ruta.suffix.lower()]
     datos = base64.standard_b64encode(ruta.read_bytes()).decode("ascii")
@@ -239,12 +250,7 @@ def orden_catalogar(args: argparse.Namespace) -> None:
     salida = RESULTADOS / (args.modelo + ("" if not args.sin_web else "_sin_web"))
     salida.mkdir(parents=True, exist_ok=True)
 
-    client = None
-    if not args.en_seco:
-        import anthropic
-        if not os.environ.get("ANTHROPIC_API_KEY"):
-            sys.exit("Falta ANTHROPIC_API_KEY en .env.")
-        client = anthropic.Anthropic()
+    client = None if args.en_seco else cliente()
 
     total_eur, hechas, saltadas = 0.0, 0, 0
     for ref in referencias:
@@ -272,6 +278,26 @@ def orden_catalogar(args: argparse.Namespace) -> None:
             + ("" if resultado["ficha"] else " · SIN JSON"))
         print(f"{ref}: {estado}")
     print(f"\n{hechas} catalogadas, {saltadas} ya hechas, {total_eur:.2f} € esta pasada → {salida}")
+
+
+# ---------------------------------------------------------------- identificar (fotos sueltas)
+
+def orden_identificar(args: argparse.Namespace) -> None:
+    """Una estampa cualquiera, con tus fotos: no toca el Gestor ni la muestra."""
+    imagenes = [Path(r) for r in args.imagenes]
+    for r in imagenes:
+        if not r.exists():
+            sys.exit(f"No encuentro {r}")
+    alto, ancho = (float(x.replace(",", ".")) for x in args.medidas.lower().split("x"))
+    ficha = {"referencia": args.nombre or imagenes[0].stem, "alto_cm": alto, "ancho_cm": ancho}
+    salida = RESULTADOS / "sueltas"
+    salida.mkdir(parents=True, exist_ok=True)
+    resultado = catalogar_una(cliente(), args.modelo, ficha, imagenes, not args.sin_web)
+    destino = salida / f"{ficha['referencia']}.json"
+    destino.write_text(json.dumps(resultado, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(resultado["texto"])
+    print(f"\n{resultado['coste_eur']:.2f} € · {resultado['uso']['busquedas']} búsquedas · "
+          f"{resultado['uso']['lecturas']} lecturas · {resultado['duracion_s']} s → {destino}")
 
 
 # ---------------------------------------------------------------- informe
@@ -430,6 +456,13 @@ def main(argv: list[str] | None = None) -> None:
     c.add_argument("--en-seco", action="store_true", help="lista lo que haría sin llamar a la API")
     c.add_argument("--solo", nargs="*", metavar="REF", help="solo estas referencias")
     c.set_defaults(f=orden_catalogar)
+    d = sub.add_parser("identificar", help="una estampa con tus propias fotos, fuera del Gestor")
+    d.add_argument("imagenes", nargs="+", metavar="FOTO", help="una o varias fotos (la primera, la hoja entera)")
+    d.add_argument("--medidas", required=True, metavar="ALTOxANCHO", help="en cm, p. ej. 35x24.4")
+    d.add_argument("--nombre", help="nombre del resultado (por defecto, el de la primera foto)")
+    d.add_argument("--modelo", default=MODELO_POR_DEFECTO)
+    d.add_argument("--sin-web", action="store_true")
+    d.set_defaults(f=orden_identificar)
     i = sub.add_parser("informe")
     i.add_argument("--modelo", default=MODELO_POR_DEFECTO, help="carpeta de resultados (p. ej. claude-sonnet-5-5_sin_web)")
     i.set_defaults(f=orden_informe)
