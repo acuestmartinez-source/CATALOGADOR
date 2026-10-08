@@ -203,9 +203,10 @@ SELLO_EDITOR = {
 }
 
 
-def herramientas(con_web: bool, con_lupa: bool, web_agotada: bool = False) -> list[dict]:
+def herramientas(con_web: bool, con_lupa: bool) -> list[dict]:
+    """Siempre las mismas en toda la obra: quitar una rompe la caché y deja huérfanas sus llamadas del historial."""
     lista = [LUPA, SELLO_EDITOR] if con_lupa else []
-    if con_web and not web_agotada:
+    if con_web:
         lista += [
             {"type": "web_search_20260209", "name": "web_search", "max_uses": USOS_POR_PETICION,
              "blocked_domains": DOMINIOS_BLOQUEADOS},
@@ -338,7 +339,7 @@ def catalogar_una(client, modelo: str, ficha: dict, imagenes: list[Path], con_we
                consultas_sello=0)
     consultas, lecturas, ampliaciones, sellos_consultados = [], [], [], []
     inicio = time.time()
-    respuesta, pausas = None, 0
+    respuesta, pausas, avisado = None, 0, False
     for _ in range(MAX_VUELTAS):
         with client.messages.stream(
             model=modelo,
@@ -346,8 +347,7 @@ def catalogar_una(client, modelo: str, ficha: dict, imagenes: list[Path], con_we
             system=sistema,
             thinking={"type": "adaptive"},
             output_config={"effort": "high"},
-            tools=herramientas(con_web, con_lupa,
-                               uso["busquedas"] >= MAX_BUSQUEDAS or uso["lecturas"] >= MAX_LECTURAS),
+            tools=herramientas(con_web, con_lupa),
             messages=mensajes,
         ) as flujo:
             respuesta = flujo.get_final_message()
@@ -378,6 +378,10 @@ def catalogar_una(client, modelo: str, ficha: dict, imagenes: list[Path], con_we
             else:
                 resultados.append({"type": "tool_result", "tool_use_id": b.id, "is_error": True,
                                    "content": "Agotado el tope de esta herramienta: sigue con lo que tienes."})
+        if con_web and not avisado and (uso["busquedas"] >= MAX_BUSQUEDAS or uso["lecturas"] >= MAX_LECTURAS):
+            avisado = True
+            resultados.append({"type": "text", "text": "Has agotado el presupuesto de búsquedas y lecturas web de "
+                               "esta obra: no busques ni leas más en la web y termina la ficha con lo que tienes."})
         mensajes.append({"role": "user", "content": resultados})
     texto = "\n".join(b.text for b in respuesta.content if b.type == "text")
     return {
