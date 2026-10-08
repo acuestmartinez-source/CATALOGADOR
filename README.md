@@ -4,6 +4,7 @@ Agente de catalogación de obra gráfica para Taller del Prado, con foco inicial
 
 - Estudio de partida: `docs/00_viabilidad_agente_catalogacion.md`.
 - Diseño del piloto: `docs/01_diseno_piloto.md`.
+- Piloto v2, especializado en estampa japonesa (OCR, lupa, sellos de editor): `docs/02_piloto_v2_estampa_japonesa.md`.
 
 ## Órdenes del piloto
 
