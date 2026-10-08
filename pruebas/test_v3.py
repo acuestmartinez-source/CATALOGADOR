@@ -94,7 +94,7 @@ def test_verificar_fuentes_dice_de_donde_sale_cada_url():
                  "https://ukiyo-e.org/image/mfa/sc1": "abierta", "https://www.loc.gov/item/1/": "abierta"}
 
 
-def test_turno_pasa_la_peticion_tal_cual_y_repite_un_corte():
+def test_turno_pasa_la_peticion_tal_cual_y_repite_un_corte(monkeypatch):
     import piloto
 
     class Flujo:
@@ -119,7 +119,7 @@ def test_turno_pasa_la_peticion_tal_cual_y_repite_un_corte():
     class Cliente:
         messages = Mensajes()
 
-    piloto.time.sleep = lambda s: None
+    monkeypatch.setattr(piloto.time, "sleep", lambda s: None)
     cliente = Cliente()
     assert piloto.turno(cliente, model="claude-sonnet-5-5", max_tokens=10, messages=[]) == "respuesta"
     assert [l["model"] for l in cliente.messages.llamadas] == ["claude-sonnet-5-5", "claude-sonnet-5-5"]
