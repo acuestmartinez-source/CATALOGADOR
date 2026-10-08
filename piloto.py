@@ -604,6 +604,11 @@ def orden_catalogar(args: argparse.Namespace) -> None:
                 print(f"{ref}: el NAS no responde ({e}); se repite en {60 * (intento + 1)} s", flush=True)
                 time.sleep(60 * (intento + 1))
             except Exception as e:  # la obra que falla se apunta y se sigue; no se guarda y la próxima pasada la reintenta
+                # La API a veces deja a medias el código con que filtra sus propias búsquedas cuando el mismo
+                # turno pide herramientas nuestras; el historial ya no vale y no se edita: se repite la obra una vez.
+                if "without a corresponding" in str(e) and intento == 0:
+                    print(f"{ref}: la API dejó una búsqueda a medias; se repite la obra", flush=True)
+                    continue
                 print(f"{ref}: ERROR {type(e).__name__}: {e}", flush=True)
                 return 0.0
         destino.write_text(json.dumps(r, ensure_ascii=False, indent=2), encoding="utf-8")
