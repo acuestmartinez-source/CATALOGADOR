@@ -31,9 +31,16 @@ RESULTADOS = RAIZ / "resultados"
 MODELO_POR_DEFECTO = "claude-sonnet-5-5"
 TAMANO_MUESTRA = 50
 SEMILLA = 2026
-MAX_BUSQUEDAS = 8
-MAX_LECTURAS = 8
+MAX_BUSQUEDAS = 12  # por obra, sumando todas las peticiones
+MAX_LECTURAS = 10
+USOS_POR_PETICION = 6  # el max_uses de la API cuenta por petición, no por obra
+MAX_CONSULTAS_SELLO = 10
 MAX_REANUDACIONES = 5  # pause_turn: el servidor para cada 10 iteraciones y se le dice que siga
+MAX_AMPLIACIONES = 16  # la lupa: recortes que puede pedir el agente por obra
+MAX_VUELTAS = 40       # tope de peticiones a la API por obra, por si algo se enreda
+LADO_AMPLIACION = 1400  # px del lado largo de cada recorte ampliado
+NDL_OCR = Path(os.environ.get("TDP_NDL_OCR", r"C:\dev\ndlkotenocr-lite"))
+OCR_CACHE = RESULTADOS / "_ocr"
 
 # USD por millón de tokens: entrada, salida, lectura de caché. Precios de octubre de 2026.
 PRECIOS = {
@@ -154,15 +161,131 @@ def bloque_imagen(ruta: Path) -> dict:
     return {"type": "image", "source": {"type": "base64", "media_type": tipo, "data": datos}}
 
 
-def herramientas(con_web: bool) -> list[dict]:
-    if not con_web:
-        return []
-    return [
-        {"type": "web_search_20260209", "name": "web_search", "max_uses": MAX_BUSQUEDAS,
-         "blocked_domains": DOMINIOS_BLOQUEADOS},
-        {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": MAX_LECTURAS,
-         "blocked_domains": DOMINIOS_BLOQUEADOS, "max_content_tokens": 8000},
-    ]
+LUPA = {
+    "name": "ampliar",
+    "description": (
+        "Devuelve un recorte ampliado de una de las fotos de la estampa. Úsalo para mirar de cerca cada "
+        "sello (censor, fecha, editor, grabador, coleccionista), cada símbolo o emblema suelto, cada firma y "
+        "cada cartucho de texto antes de transcribirlos. Las coordenadas van de 0 a 1000 sobre la foto: "
+        "x de izquierda a derecha, y de arriba abajo. Un recorte pequeño se ve más grande."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "imagen": {"type": "integer", "description": "1 para la primera foto, 2 para la segunda"},
+            "x0": {"type": "integer"}, "y0": {"type": "integer"},
+            "x1": {"type": "integer"}, "y1": {"type": "integer"},
+            "motivo": {"type": "string", "description": "qué quieres ver: sello de editor, firma, cartucho…"},
+        },
+        "required": ["imagen", "x0", "y0", "x1", "y1", "motivo"],
+        "additionalProperties": False,
+    },
+    "strict": True,
+}
+
+
+SELLO_EDITOR = {
+    "name": "buscar_sello_editor",
+    "description": (
+        "Busca en una base local de 4.000 sellos de editor de ukiyo-e (Ukiyo-e Publisher Seal Database de "
+        "ukiyoesig.net, sistema de formas de Marks). Pásale los caracteres que lees en el sello (por ejemplo "
+        "«近久» o «越嘉»; marca lo ilegible con □) o el nombre del editor en kanji o romaji. Devuelve editor, "
+        "nombre en kanji, lugar, texto del sello, lectura, fecha documentada, forma del sello y la URL del "
+        "ejemplar de museo donde se documentó, que puedes citar como fuente."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {"consulta": {"type": "string", "description": "caracteres leídos en el sello o nombre del editor"}},
+        "required": ["consulta"],
+        "additionalProperties": False,
+    },
+    "strict": True,
+}
+
+
+def herramientas(con_web: bool, con_lupa: bool, web_agotada: bool = False) -> list[dict]:
+    lista = [LUPA, SELLO_EDITOR] if con_lupa else []
+    if con_web and not web_agotada:
+        lista += [
+            {"type": "web_search_20260209", "name": "web_search", "max_uses": USOS_POR_PETICION,
+             "blocked_domains": DOMINIOS_BLOQUEADOS},
+            {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": USOS_POR_PETICION,
+             "blocked_domains": DOMINIOS_BLOQUEADOS, "max_content_tokens": 8000},
+        ]
+    return lista
+
+
+def consultar_sello(entrada: dict) -> str:
+    import sellos
+
+    filas = sellos.buscar(str(entrada.get("consulta", "")))
+    if not filas:
+        return "Ningún sello de la base comparte caracteres con esa consulta."
+    campos = ("editor", "editor_kanji", "lugar", "sello", "lectura", "fecha", "forma_nombre", "fuente")
+    return json.dumps([{k: f[k] for k in campos} for f in filas], ensure_ascii=False)
+
+
+def ampliar(imagenes: list[Path], entrada: dict) -> list[dict]:
+    """El recorte que pide el agente, ampliado; o un texto de error que el agente puede leer."""
+    from io import BytesIO
+    from PIL import Image
+
+    n = int(entrada.get("imagen", 1))
+    if not 1 <= n <= len(imagenes):
+        return [{"type": "text", "text": f"No hay imagen {n}; hay {len(imagenes)}."}]
+    x0, y0, x1, y1 = (max(0, min(1000, int(entrada[k]))) for k in ("x0", "y0", "x1", "y1"))
+    if x1 - x0 < 5 or y1 - y0 < 5:
+        return [{"type": "text", "text": "El recuadro es demasiado pequeño o está al revés: x1 > x0 e y1 > y0."}]
+    with Image.open(imagenes[n - 1]) as im:
+        im = im.convert("RGB")
+        w, h = im.size
+        recorte = im.crop((x0 * w // 1000, y0 * h // 1000, x1 * w // 1000, y1 * h // 1000))
+    escala = LADO_AMPLIACION / max(recorte.size)
+    if escala > 1:  # solo se amplía; nunca se reduce lo que ya es grande
+        recorte = recorte.resize((round(recorte.width * escala), round(recorte.height * escala)), Image.LANCZOS)
+    buf = BytesIO()
+    recorte.save(buf, format="JPEG", quality=90)
+    return [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                                          "data": base64.standard_b64encode(buf.getvalue()).decode("ascii")}}]
+
+
+def ocr_ndl(imagen: Path) -> list[dict]:
+    """Bloques de texto leídos por NDL古典籍OCR-Lite, con caja en 0–1000. Se guarda en caché por foto."""
+    import subprocess
+
+    cache = OCR_CACHE / f"{imagen.parent.name}_{imagen.stem}.json"
+    if not cache.exists():
+        python = NDL_OCR / ".venv" / "Scripts" / "python.exe"
+        if not python.exists():
+            raise RuntimeError(f"No encuentro el OCR de la NDL en {NDL_OCR}; pon TDP_NDL_OCR o usa --sin-ocr")
+        temporal = OCR_CACHE / "_trabajo" / imagen.parent.name
+        temporal.mkdir(parents=True, exist_ok=True)
+        subprocess.run([str(python), "ocr.py", "--sourceimg", str(imagen), "--output", str(temporal)],
+                       cwd=NDL_OCR / "src", check=True, capture_output=True,
+                       env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+        crudo = json.loads((temporal / f"{imagen.stem}.json").read_text(encoding="utf-8"))
+        ancho, alto = crudo["imginfo"]["img_width"], crudo["imginfo"]["img_height"]
+        bloques = []
+        for b in (crudo["contents"][0] if crudo["contents"] else []):
+            xs = [q[0] for q in b["boundingBox"]]
+            ys = [q[1] for q in b["boundingBox"]]
+            bloques.append({
+                "caja": [min(xs) * 1000 // ancho, min(ys) * 1000 // alto, max(xs) * 1000 // ancho, max(ys) * 1000 // alto],
+                "texto": b.get("text", ""),
+                "confianza": round(float(b.get("confidence", 0)), 2),
+            })
+        cache.write_text(json.dumps(bloques, ensure_ascii=False, indent=1), encoding="utf-8")
+    return json.loads(cache.read_text(encoding="utf-8"))
+
+
+def texto_ocr(bloques: list[dict]) -> str:
+    if not bloques:
+        return "Lectura automática (OCR): no ha encontrado ningún bloque de texto en la foto 1."
+    lineas = [f"- caja {b['caja']} · confianza {b['confianza']}: {b['texto']}" for b in bloques]
+    return ("Lectura automática de la foto 1 con NDL古典籍OCR-Lite (OCR de japonés antiguo). Cajas en 0–1000 "
+            "(x0, y0, x1, y1). Es una PISTA con errores: a veces lee dibujo como texto, no ve los sellos redondos "
+            "ni los símbolos sueltos, y confunde caracteres parecidos. Compruébala con la lupa antes de usarla:\n"
+            + "\n".join(lineas))
 
 
 def sumar_uso(total: dict, uso) -> None:
@@ -197,43 +320,72 @@ def extraer_json(texto: str) -> dict | None:
     return None
 
 
-def catalogar_una(client, modelo: str, ficha: dict, imagenes: list[Path], con_web: bool) -> dict:
-    import anthropic
-
+def catalogar_una(client, modelo: str, ficha: dict, imagenes: list[Path], con_web: bool,
+                  con_ocr: bool = True, con_lupa: bool = True) -> dict:
     sistema = [{"type": "text", "text": PROMPT.read_text(encoding="utf-8"), "cache_control": {"type": "ephemeral"}}]
     medidas = f"Medidas de la hoja: {ficha['alto_cm']} cm de alto por {ficha['ancho_cm']} cm de ancho."
-    contenido = [bloque_imagen(r) for r in imagenes] + [
-        {"type": "text", "text": f"{medidas} Propón la ficha catalográfica de esta estampa siguiendo las reglas."}
-    ]
+    bloques = ocr_ndl(imagenes[0]) if con_ocr else []
+    contenido = [bloque_imagen(r) for r in imagenes]
+    if con_ocr:
+        contenido.append({"type": "text", "text": texto_ocr(bloques)})
+    pedido = f"{medidas} Propón la ficha catalográfica de esta obra siguiendo las reglas."
+    if not con_lupa:
+        pedido += " En esta pasada no tienes la herramienta de ampliar: trabaja con las fotos tal cual."
+    contenido.append({"type": "text", "text": pedido})
+
     mensajes = [{"role": "user", "content": contenido}]
-    uso = dict(entrada=0, salida=0, cache_escrita=0, cache_leida=0, busquedas=0, lecturas=0)
-    consultas, lecturas = [], []
+    uso = dict(entrada=0, salida=0, cache_escrita=0, cache_leida=0, busquedas=0, lecturas=0, ampliaciones=0,
+               consultas_sello=0)
+    consultas, lecturas, ampliaciones, sellos_consultados = [], [], [], []
     inicio = time.time()
-    respuesta = None
-    for _ in range(MAX_REANUDACIONES + 1):
-        respuesta = client.messages.create(
+    respuesta, pausas = None, 0
+    for _ in range(MAX_VUELTAS):
+        with client.messages.stream(
             model=modelo,
-            max_tokens=16000,
+            max_tokens=32000,
             system=sistema,
             thinking={"type": "adaptive"},
             output_config={"effort": "high"},
-            tools=herramientas(con_web),
+            tools=herramientas(con_web, con_lupa,
+                               uso["busquedas"] >= MAX_BUSQUEDAS or uso["lecturas"] >= MAX_LECTURAS),
             messages=mensajes,
-        )
+        ) as flujo:
+            respuesta = flujo.get_final_message()
         sumar_uso(uso, respuesta.usage)
         for b in respuesta.content:
             if b.type == "server_tool_use" and b.name == "web_search":
                 consultas.append(b.input.get("query", ""))
             elif b.type == "server_tool_use" and b.name == "web_fetch":
                 lecturas.append(b.input.get("url", ""))
-        if respuesta.stop_reason != "pause_turn":
+        mensajes.append({"role": "assistant", "content": respuesta.content})
+        if respuesta.stop_reason == "pause_turn" and pausas < MAX_REANUDACIONES:
+            pausas += 1
+            continue
+        if respuesta.stop_reason != "tool_use":
             break
-        mensajes = mensajes[:1] + [{"role": "assistant", "content": respuesta.content}]
+        resultados = []
+        for b in respuesta.content:
+            if b.type != "tool_use":
+                continue
+            if b.name == "ampliar" and uso["ampliaciones"] < MAX_AMPLIACIONES:
+                uso["ampliaciones"] += 1
+                ampliaciones.append(b.input)
+                resultados.append({"type": "tool_result", "tool_use_id": b.id, "content": ampliar(imagenes, b.input)})
+            elif b.name == "buscar_sello_editor" and uso["consultas_sello"] < MAX_CONSULTAS_SELLO:
+                uso["consultas_sello"] += 1
+                sellos_consultados.append(b.input.get("consulta", ""))
+                resultados.append({"type": "tool_result", "tool_use_id": b.id, "content": consultar_sello(b.input)})
+            else:
+                resultados.append({"type": "tool_result", "tool_use_id": b.id, "is_error": True,
+                                   "content": "Agotado el tope de esta herramienta: sigue con lo que tienes."})
+        mensajes.append({"role": "user", "content": resultados})
     texto = "\n".join(b.text for b in respuesta.content if b.type == "text")
     return {
         "referencia": ficha["referencia"],
         "modelo": modelo,
         "con_web": con_web,
+        "con_ocr": con_ocr,
+        "con_lupa": con_lupa,
         "ficha": extraer_json(texto),
         "texto": texto,
         "parada": respuesta.stop_reason,
@@ -241,20 +393,29 @@ def catalogar_una(client, modelo: str, ficha: dict, imagenes: list[Path], con_we
         "coste_eur": coste_eur(modelo, uso),
         "consultas": consultas,
         "lecturas": lecturas,
+        "ampliaciones": ampliaciones,
+        "sellos_consultados": sellos_consultados,
+        "ocr": bloques,
         "duracion_s": round(time.time() - inicio, 1),
     }
 
 
+def nombre_pasada(modelo: str, sin_web: bool, sin_ocr: bool, sin_lupa: bool) -> str:
+    """La carpeta de resultados dice cómo se hizo la pasada. Sin sufijos: la v2 completa."""
+    return modelo + "_v2" + "_sin_web" * sin_web + "_sin_ocr" * sin_ocr + "_sin_lupa" * sin_lupa
+
+
 def orden_catalogar(args: argparse.Namespace) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
     con = abrir_gestor()
     carpeta = carpeta_imagenes()
     referencias = args.solo or leer_muestra()
-    salida = RESULTADOS / (args.modelo + ("" if not args.sin_web else "_sin_web"))
+    salida = RESULTADOS / nombre_pasada(args.modelo, args.sin_web, args.sin_ocr, args.sin_lupa)
     salida.mkdir(parents=True, exist_ok=True)
-
     client = None if args.en_seco else cliente()
 
-    total_eur, hechas, saltadas = 0.0, 0, 0
+    trabajos, saltadas = [], 0
     for ref in referencias:
         destino = salida / f"{ref}.json"
         if destino.exists():
@@ -266,20 +427,25 @@ def orden_catalogar(args: argparse.Namespace) -> None:
             print(f"{ref}: sin imagen en {carpeta}; se salta")
             continue
         if args.en_seco:
-            print(f"{ref}: {len(imagenes)} imagen(es), {ficha['alto_cm']}x{ficha['ancho_cm']} cm → {destino.name}")
+            print(f"{ref}: {len(imagenes)} imagen(es), {ficha['alto_cm']}x{ficha['ancho_cm']} cm -> {destino.name}")
             continue
+        trabajos.append((ref, ficha, imagenes, destino))
+
+    def una(trabajo) -> float:
+        ref, ficha, imagenes, destino = trabajo
         try:
-            resultado = catalogar_una(client, args.modelo, ficha, imagenes, not args.sin_web)
-        except Exception as e:  # la obra que falla se apunta y se sigue con la siguiente
-            resultado = {"referencia": ref, "modelo": args.modelo, "error": f"{type(e).__name__}: {e}", "coste_eur": 0.0}
-        destino.write_text(json.dumps(resultado, ensure_ascii=False, indent=2), encoding="utf-8")
-        total_eur += resultado["coste_eur"]
-        hechas += 1
-        estado = "ERROR " + resultado["error"] if "error" in resultado else (
-            f"{resultado['coste_eur']:.2f} € · {resultado['uso']['busquedas']} búsq. · {resultado['duracion_s']} s"
-            + ("" if resultado["ficha"] else " · SIN JSON"))
-        print(f"{ref}: {estado}")
-    print(f"\n{hechas} catalogadas, {saltadas} ya hechas, {total_eur:.2f} € esta pasada → {salida}")
+            r = catalogar_una(client, args.modelo, ficha, imagenes, not args.sin_web, not args.sin_ocr, not args.sin_lupa)
+        except Exception as e:  # la obra que falla se apunta y se sigue; no se guarda y la próxima pasada la reintenta
+            print(f"{ref}: ERROR {type(e).__name__}: {e}", flush=True)
+            return 0.0
+        destino.write_text(json.dumps(r, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"{ref}: {r['coste_eur']:.2f} € · {r['uso']['busquedas']} búsq. · {r['uso']['ampliaciones']} ampl. · "
+              f"{r['duracion_s']} s" + ("" if r["ficha"] else " · SIN JSON"), flush=True)
+        return r["coste_eur"]
+
+    with ThreadPoolExecutor(max_workers=args.paralelo) as hilos:
+        total_eur = sum(hilos.map(una, trabajos))
+    print(f"\n{len(trabajos)} intentadas, {saltadas} ya hechas, {total_eur:.2f} € esta pasada -> {salida}")
 
 
 # ---------------------------------------------------------------- identificar (fotos sueltas)
@@ -294,7 +460,7 @@ def orden_identificar(args: argparse.Namespace) -> None:
     ficha = {"referencia": args.nombre or imagenes[0].stem, "alto_cm": alto, "ancho_cm": ancho}
     salida = RESULTADOS / "sueltas"
     salida.mkdir(parents=True, exist_ok=True)
-    resultado = catalogar_una(cliente(), args.modelo, ficha, imagenes, not args.sin_web)
+    resultado = catalogar_una(cliente(), args.modelo, ficha, imagenes, not args.sin_web, not args.sin_ocr)
     destino = salida / f"{ficha['referencia']}.json"
     destino.write_text(json.dumps(resultado, ensure_ascii=False, indent=2), encoding="utf-8")
     print(resultado["texto"])
@@ -457,6 +623,9 @@ def main(argv: list[str] | None = None) -> None:
     c.add_argument("--sin-web", action="store_true", help="solo visión, sin búsqueda ni lectura web")
     c.add_argument("--en-seco", action="store_true", help="lista lo que haría sin llamar a la API")
     c.add_argument("--solo", nargs="*", metavar="REF", help="solo estas referencias")
+    c.add_argument("--sin-ocr", action="store_true", help="sin la lectura previa del OCR de la NDL")
+    c.add_argument("--sin-lupa", action="store_true", help="sin la herramienta de ampliar")
+    c.add_argument("--paralelo", type=int, default=4, help="obras a la vez (por defecto 4)")
     c.set_defaults(f=orden_catalogar)
     d = sub.add_parser("identificar", help="una estampa con tus propias fotos, fuera del Gestor")
     d.add_argument("imagenes", nargs="+", metavar="FOTO", help="una o varias fotos (la primera, la hoja entera)")
@@ -464,9 +633,10 @@ def main(argv: list[str] | None = None) -> None:
     d.add_argument("--nombre", help="nombre del resultado (por defecto, el de la primera foto)")
     d.add_argument("--modelo", default=MODELO_POR_DEFECTO)
     d.add_argument("--sin-web", action="store_true")
+    d.add_argument("--sin-ocr", action="store_true")
     d.set_defaults(f=orden_identificar)
     i = sub.add_parser("informe")
-    i.add_argument("--modelo", default=MODELO_POR_DEFECTO, help="carpeta de resultados (p. ej. claude-sonnet-5-5_sin_web)")
+    i.add_argument("--modelo", default=MODELO_POR_DEFECTO + "_v2", help="carpeta de resultados (p. ej. claude-sonnet-5-5_v2_sin_ocr)")
     i.set_defaults(f=orden_informe)
     args = p.parse_args(argv)
     args.f(args)
