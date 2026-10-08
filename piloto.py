@@ -222,8 +222,10 @@ def catalogar_una(client, modelo: str, ficha: dict, imagenes: list[Path], con_we
         )
         sumar_uso(uso, respuesta.usage)
         for b in respuesta.content:
-            if b.type == "server_tool_use":
-                (consultas if b.name == "web_search" else lecturas).append(json.dumps(b.input, ensure_ascii=False))
+            if b.type == "server_tool_use" and b.name == "web_search":
+                consultas.append(b.input.get("query", ""))
+            elif b.type == "server_tool_use" and b.name == "web_fetch":
+                lecturas.append(b.input.get("url", ""))
         if respuesta.stop_reason != "pause_turn":
             break
         mensajes = mensajes[:1] + [{"role": "assistant", "content": respuesta.content}]
