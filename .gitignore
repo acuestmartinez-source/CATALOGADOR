@@ -5,3 +5,4 @@ datos/
 __pycache__/
 .venv/
 resultados/
+piloto/pistas.csv

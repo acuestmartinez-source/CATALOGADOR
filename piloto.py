@@ -54,8 +54,10 @@ EUR_POR_USD = 0.92  # ponytail: tipo fijo; el informe dice que es aproximado
 # Fuera del piloto por condiciones de uso (decisión P-10 del diseño).
 DOMINIOS_BLOQUEADOS = [
     "artnet.com", "artprice.com", "mutualart.com", "askart.com", "invaluable.com",
-    "liveauctioneers.com", "ukiyo-e.org", "dh-jac.net", "tallerdelprado.com",
+    "liveauctioneers.com", "dh-jac.net", "tallerdelprado.com",
 ]
+PISTAS = RAIZ / "piloto" / "pistas.csv"  # referencia;url;nota — lo que una persona encontró a mano (p. ej. en ukiyo-e.org)
+
 
 
 # ---------------------------------------------------------------- entorno y Gestor
@@ -261,7 +263,7 @@ def ocr_ndl(imagen: Path) -> list[dict]:
             raise RuntimeError(f"No encuentro el OCR de la NDL en {NDL_OCR}; pon TDP_NDL_OCR o usa --sin-ocr")
         temporal = OCR_CACHE / "_trabajo" / imagen.parent.name
         temporal.mkdir(parents=True, exist_ok=True)
-        subprocess.run([str(python), "ocr.py", "--sourceimg", str(imagen), "--output", str(temporal)],
+        subprocess.run([str(python), "ocr.py", "--sourceimg", str(imagen.resolve()), "--output", str(temporal)],
                        cwd=NDL_OCR / "src", check=True, capture_output=True,
                        env={**os.environ, "PYTHONIOENCODING": "utf-8"})
         crudo = json.loads((temporal / f"{imagen.stem}.json").read_text(encoding="utf-8"))
@@ -321,14 +323,55 @@ def extraer_json(texto: str) -> dict | None:
     return None
 
 
+def leer_pistas() -> dict[str, list[dict]]:
+    """Lo que una persona ha encontrado a mano para una obra: URL y nota, por referencia."""
+    if not PISTAS.exists():
+        return {}
+    pistas: dict[str, list[dict]] = {}
+    with PISTAS.open(encoding="utf-8-sig") as f:
+        for fila in csv.DictReader(f, delimiter=";"):
+            if fila.get("referencia") and fila.get("url"):
+                pistas.setdefault(fila["referencia"].strip(), []).append(
+                    {"url": fila["url"].strip(), "nota": (fila.get("nota") or "").strip()})
+    return pistas
+
+
+def texto_pistas(pistas: list[dict]) -> str:
+    lineas = [f"- {p['url']}" + (f" ({p['nota']})" if p["nota"] else "") for p in pistas]
+    return ("Una persona del taller ha buscado esta obra a mano y te deja estas páginas. Léelas ANTES de buscar "
+            "nada. Si una de ellas es de ukiyo-e.org e identifica la misma estampa, ese dato manda sobre cualquier "
+            "otro: tómalo como fuente principal de artista, título, serie, editor y fecha.\n" + "\n".join(lineas))
+
+
+def consulta_ukiyoe(ficha: dict | None) -> str | None:
+    """La búsqueda de texto en ukiyo-e.org que haría una persona con lo que el agente ya sabe."""
+    artista = _campo(ficha, "artista", "nombre") or ""
+    if not artista:
+        return None
+    artista = re.split(r"[(,;]", artista)[0]  # fuera paréntesis y coletillas («firma Kōchōrō…»)
+    artista = "".join(c for c in unicodedata.normalize("NFKD", artista) if not unicodedata.combining(c))
+    partes = [w for w in re.sub(r"[^\w\s-]", " ", artista).split()
+              if w.lower() not in ("utagawa", "toyohara", "tsukioka", "kitagawa", "katsushika")][:2]
+    extra = _campo(ficha, "serie", "romaji") or _campo(ficha, "titulo", "romaji") or ""
+    extra = "".join(c for c in unicodedata.normalize("NFKD", extra) if not unicodedata.combining(c))
+    palabras = partes + [w for w in re.sub(r"[^\w\s-]", " ", extra).split() if len(w) > 2][:4]
+    if not palabras:
+        return None
+    from urllib.parse import quote_plus
+
+    return "https://ukiyo-e.org/search?q=" + quote_plus(" ".join(palabras))
+
+
 def catalogar_una(client, modelo: str, ficha: dict, imagenes: list[Path], con_web: bool,
-                  con_ocr: bool = True, con_lupa: bool = True) -> dict:
+                  con_ocr: bool = True, con_lupa: bool = True, pistas: list[dict] | None = None) -> dict:
     sistema = [{"type": "text", "text": PROMPT.read_text(encoding="utf-8"), "cache_control": {"type": "ephemeral"}}]
     medidas = f"Medidas de la hoja: {ficha['alto_cm']} cm de alto por {ficha['ancho_cm']} cm de ancho."
     bloques = ocr_ndl(imagenes[0]) if con_ocr else []
     contenido = [bloque_imagen(r) for r in imagenes]
     if con_ocr:
         contenido.append({"type": "text", "text": texto_ocr(bloques)})
+    if pistas and con_web:
+        contenido.append({"type": "text", "text": texto_pistas(pistas)})
     pedido = f"{medidas} Propón la ficha catalográfica de esta obra siguiendo las reglas."
     if not con_lupa:
         pedido += " En esta pasada no tienes la herramienta de ampliar: trabaja con las fotos tal cual."
@@ -339,7 +382,7 @@ def catalogar_una(client, modelo: str, ficha: dict, imagenes: list[Path], con_we
                consultas_sello=0)
     consultas, lecturas, ampliaciones, sellos_consultados = [], [], [], []
     inicio = time.time()
-    respuesta, pausas, avisado = None, 0, False
+    respuesta, pausas, avisado, verificado = None, 0, False, not con_web
     for _ in range(MAX_VUELTAS):
         with client.messages.stream(
             model=modelo,
@@ -362,7 +405,20 @@ def catalogar_una(client, modelo: str, ficha: dict, imagenes: list[Path], con_we
             pausas += 1
             continue
         if respuesta.stop_reason != "tool_use":
-            break
+            if verificado:
+                break
+            # Vuelta de verificación: la búsqueda de texto en ukiyo-e.org, una sola página, como la haría una persona.
+            verificado = True
+            url = consulta_ukiyoe(extraer_json("\n".join(b.text for b in respuesta.content if b.type == "text")))
+            if not url:
+                break
+            lecturas.append(url)
+            mensajes.append({"role": "user", "content": [{"type": "text", "text": (
+                f"Comprueba ahora en ukiyo-e.org, que es la base de referencia del taller: lee {url} y, si entre "
+                "los resultados está la misma composición, abre su ficha y corrige la tuya con esos datos, citando "
+                "la URL de ukiyo-e.org como fuente. Si no está, dilo en «notas» y devuelve la ficha sin cambios. "
+                "Termina otra vez con el bloque ```json completo.")}]})
+            continue
         resultados = []
         for b in respuesta.content:
             if b.type != "tool_use":
@@ -418,11 +474,12 @@ def orden_catalogar(args: argparse.Namespace) -> None:
     salida = RESULTADOS / nombre_pasada(args.modelo, args.sin_web, args.sin_ocr, args.sin_lupa)
     salida.mkdir(parents=True, exist_ok=True)
     client = None if args.en_seco else cliente()
+    pistas = leer_pistas()
 
     trabajos, saltadas = [], 0
     for ref in referencias:
         destino = salida / f"{ref}.json"
-        if destino.exists():
+        if destino.exists() and not args.repetir:
             saltadas += 1
             continue
         ficha = verdad(con, ref)
@@ -438,7 +495,8 @@ def orden_catalogar(args: argparse.Namespace) -> None:
     def una(trabajo) -> float:
         ref, ficha, imagenes, destino = trabajo
         try:
-            r = catalogar_una(client, args.modelo, ficha, imagenes, not args.sin_web, not args.sin_ocr, not args.sin_lupa)
+            r = catalogar_una(client, args.modelo, ficha, imagenes, not args.sin_web, not args.sin_ocr, not args.sin_lupa,
+                              pistas.get(ref))
         except Exception as e:  # la obra que falla se apunta y se sigue; no se guarda y la próxima pasada la reintenta
             print(f"{ref}: ERROR {type(e).__name__}: {e}", flush=True)
             return 0.0
@@ -464,7 +522,8 @@ def orden_identificar(args: argparse.Namespace) -> None:
     ficha = {"referencia": args.nombre or imagenes[0].stem, "alto_cm": alto, "ancho_cm": ancho}
     salida = RESULTADOS / "sueltas"
     salida.mkdir(parents=True, exist_ok=True)
-    resultado = catalogar_una(cliente(), args.modelo, ficha, imagenes, not args.sin_web, not args.sin_ocr)
+    pistas = [{"url": u, "nota": ""} for u in (args.pista or [])]
+    resultado = catalogar_una(cliente(), args.modelo, ficha, imagenes, not args.sin_web, not args.sin_ocr, True, pistas)
     destino = salida / f"{ficha['referencia']}.json"
     destino.write_text(json.dumps(resultado, ensure_ascii=False, indent=2), encoding="utf-8")
     print(resultado["texto"])
@@ -688,6 +747,7 @@ def main(argv: list[str] | None = None) -> None:
     c.add_argument("--sin-ocr", action="store_true", help="sin la lectura previa del OCR de la NDL")
     c.add_argument("--sin-lupa", action="store_true", help="sin la herramienta de ampliar")
     c.add_argument("--paralelo", type=int, default=4, help="obras a la vez (por defecto 4)")
+    c.add_argument("--repetir", action="store_true", help="vuelve a hacer las obras que ya tienen resultado")
     c.set_defaults(f=orden_catalogar)
     d = sub.add_parser("identificar", help="una estampa con tus propias fotos, fuera del Gestor")
     d.add_argument("imagenes", nargs="+", metavar="FOTO", help="una o varias fotos (la primera, la hoja entera)")
@@ -696,6 +756,7 @@ def main(argv: list[str] | None = None) -> None:
     d.add_argument("--modelo", default=MODELO_POR_DEFECTO)
     d.add_argument("--sin-web", action="store_true")
     d.add_argument("--sin-ocr", action="store_true")
+    d.add_argument("--pista", nargs="*", metavar="URL", help="páginas encontradas a mano (p. ej. el resultado de ukiyo-e.org)")
     d.set_defaults(f=orden_identificar)
     i = sub.add_parser("informe")
     i.add_argument("--modelo", default=MODELO_POR_DEFECTO + "_v2", help="carpeta de resultados (p. ej. claude-sonnet-5-5_v2_sin_ocr)")

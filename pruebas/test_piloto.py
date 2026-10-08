@@ -52,3 +52,12 @@ def test_extraer_json_coge_el_ultimo_bloque_valido():
     texto = 'Pienso...\n```json\n{"a": 1}\n```\nY la ficha:\n```json\n{"artista": {"nombre": "X"}}\n```\n'
     assert extraer_json(texto) == {"artista": {"nombre": "X"}}
     assert extraer_json("sin bloque") is None
+
+
+def test_consulta_ukiyoe_usa_artista_y_serie_sin_prefijos_ni_acentos():
+    from piloto import consulta_ukiyoe
+    ficha = {"artista": {"nombre": "Utagawa Kunisada (Toyokuni III), firma Kōchōrō Kunisada ga"},
+             "serie": {"romaji": "Hauta tora no maki"}}
+    assert consulta_ukiyoe(ficha) == "https://ukiyo-e.org/search?q=Kunisada+Hauta+tora+maki"
+    assert consulta_ukiyoe({"artista": {"nombre": None}}) is None
+    assert consulta_ukiyoe(None) is None
