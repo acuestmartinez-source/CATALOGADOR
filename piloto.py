@@ -368,6 +368,51 @@ def extraer_json(texto: str) -> dict | None:
     return None
 
 
+URL = re.compile(r"https?://[^\s\"'<>;,)\]]+")
+
+
+def _normal(url: str) -> str:
+    return url.rstrip("/.").replace("http://", "https://").replace("://www.", "://")
+
+
+def verificar_fuentes(ficha: dict | None, vistas: dict[str, str]) -> dict[str, str]:
+    """Para cada URL citada en la ficha, de dónde la sacó el agente.
+
+    «abierta»: la leyó entera (lectura web o ficha de ukiyo-e.org) · «base documentada»: la devolvió
+    la base de sellos o de firmas · «solo buscador»: solo la vio en un resultado de búsqueda, sin
+    abrirla · «nunca vista»: no salió de ninguna herramienta; puede ser de memoria y no vale como fuente.
+    """
+    orden = {"abierta": 0, "base documentada": 1, "solo buscador": 2}
+    conocidas = {}
+    for url, origen in vistas.items():
+        clave = _normal(url)
+        if clave not in conocidas or orden[origen] < orden[conocidas[clave]]:
+            conocidas[clave] = origen
+    citadas = {u for u in URL.findall(json.dumps(ficha or {}, ensure_ascii=False)) if "..." not in u}
+    return {u: conocidas.get(_normal(u), "nunca vista") for u in sorted(citadas)}
+
+
+def fuentes_de(r: dict) -> dict[str, str]:
+    """La verificación de fuentes de un resultado. Las pasadas anteriores a la verificación no la
+    guardaron: se rehace con lo que sí guardaron (lecturas web y consultas a las bases locales, que
+    se repiten sin red); lo que no se puede comprobar queda como «no comprobable»."""
+    if "fuentes_verificadas" in r:
+        return r["fuentes_verificadas"]
+    vistas = {u: "abierta" for u in r.get("lecturas") or []}
+    for paso in r.get("herramientas_locales") or []:
+        nombre, entrada = paso.get("herramienta"), paso.get("entrada") or {}
+        if nombre in ("buscar_sello_editor", "buscar_firma"):
+            for u in URL.findall(str(ejecutar(nombre, entrada, []))):
+                vistas.setdefault(u, "base documentada")
+        elif nombre == "ukiyoe_ficha":
+            vistas[f"https://ukiyo-e.org/image/{str(entrada.get('id', '')).split('/image/')[-1]}"] = "abierta"
+    for consulta in r.get("sellos_consultados") or []:
+        for u in URL.findall(str(ejecutar("buscar_sello_editor", {"consulta": consulta}, []))):
+            vistas.setdefault(u, "base documentada")
+    return {u: ("no comprobable" if o == "nunca vista" else o)
+            for u, o in verificar_fuentes(r.get("ficha"), vistas).items()}
+
+
 def leer_pistas() -> dict[str, list[dict]]:
     """Lo que una persona ha encontrado a mano para una obra: URL y nota, por referencia."""
     if not PISTAS.exists():
@@ -407,6 +452,7 @@ def catalogar_una(client, modelo: str, ficha: dict, imagenes: list[Path], con_we
     uso = dict(entrada=0, salida=0, cache_escrita=0, cache_leida=0, busquedas=0, lecturas=0, ampliaciones=0,
                consultas_sello=0)
     usos = {k: 0 for k in TOPES}
+    vistas: dict[str, str] = {}  # URL -> abierta | base documentada | solo buscador
     consultas, lecturas, ampliaciones, sellos_consultados, locales = [], [], [], [], []
     inicio = time.time()
     respuesta, pausas, avisado, recordado = None, 0, False, not con_web
@@ -427,6 +473,10 @@ def catalogar_una(client, modelo: str, ficha: dict, imagenes: list[Path], con_we
                 consultas.append(b.input.get("query", ""))
             elif b.type == "server_tool_use" and b.name == "web_fetch":
                 lecturas.append(b.input.get("url", ""))
+                vistas[b.input.get("url", "")] = "abierta"
+            elif b.type == "web_search_tool_result" and isinstance(b.content, list):
+                for res in b.content:
+                    vistas.setdefault(getattr(res, "url", "") or "", "solo buscador")
         mensajes.append({"role": "assistant", "content": respuesta.content})
         if respuesta.stop_reason == "pause_turn" and pausas < MAX_REANUDACIONES:
             pausas += 1
@@ -455,8 +505,15 @@ def catalogar_una(client, modelo: str, ficha: dict, imagenes: list[Path], con_we
                 elif b.name == "buscar_sello_editor":
                     uso["consultas_sello"] += 1
                     sellos_consultados.append(b.input.get("consulta", ""))
-                resultados.append({"type": "tool_result", "tool_use_id": b.id,
-                                   "content": ejecutar(b.name, b.input, imagenes)})
+                contenido_tool = ejecutar(b.name, b.input, imagenes)
+                if isinstance(contenido_tool, str):
+                    origen = {"buscar_sello_editor": "base documentada", "buscar_firma": "base documentada",
+                              "ukiyoe_ficha": "abierta", "ukiyoe_buscar": "solo buscador"}.get(b.name)
+                    for u in URL.findall(contenido_tool) if origen else []:
+                        vistas.setdefault(u, origen)
+                    if b.name == "ukiyoe_ficha":  # la ficha abierta y su original del museo, leído por ukiyo-e.org
+                        vistas[f"https://ukiyo-e.org/image/{str(b.input.get('id', '')).split('/image/')[-1]}"] = "abierta"
+                resultados.append({"type": "tool_result", "tool_use_id": b.id, "content": contenido_tool})
             else:
                 resultados.append({"type": "tool_result", "tool_use_id": b.id, "is_error": True,
                                    "content": "Agotado el tope de esta herramienta: sigue con lo que tienes."})
@@ -466,13 +523,15 @@ def catalogar_una(client, modelo: str, ficha: dict, imagenes: list[Path], con_we
                                "esta obra: no busques ni leas más en la web y termina la ficha con lo que tienes."})
         mensajes.append({"role": "user", "content": resultados})
     texto = "\n".join(b.text for b in respuesta.content if b.type == "text")
+    ficha_agente = extraer_json(texto)
     return {
         "referencia": ficha["referencia"],
         "modelo": modelo,
         "con_web": con_web,
         "con_ocr": con_ocr,
         "con_lupa": con_lupa,
-        "ficha": extraer_json(texto),
+        "ficha": ficha_agente,
+        "fuentes_verificadas": verificar_fuentes(ficha_agente, vistas),
         "texto": texto,
         "parada": respuesta.stop_reason,
         "uso": uso,

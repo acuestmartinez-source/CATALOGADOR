@@ -89,6 +89,16 @@ def marcas_de(f: dict) -> list[dict]:
     return marcas
 
 
+MARCA_FUENTE = {  # cómo llegó el agente a cada URL que cita
+    "abierta": ("ok", "✓", "abierta y leída"),
+    "base documentada": ("ok", "✓", "de la base de sellos o firmas"),
+    "solo buscador": ("aviso", "⚠", "solo vista en el buscador, sin abrir"),
+    "no comprobable": ("aviso", "?", "pasada antigua: no se puede comprobar"),
+    "nunca vista": ("mal", "✗", "no salió de ninguna herramienta: no vale como fuente"),
+}
+_FUENTES: dict[str, str] = {}
+
+
 def enlaces(urls) -> str:
     if isinstance(urls, str):
         urls = urls.replace(";", " ").split()
@@ -97,7 +107,9 @@ def enlaces(urls) -> str:
         u = str(u)
         if u.startswith("http"):
             corto = "ukiyo-e.org" if "ukiyo-e.org" in u else u.split("/")[2].removeprefix("www.")
-            salida.append(f'<a href="{html.escape(u)}" target="_blank" rel="noopener">{html.escape(corto)}</a>')
+            clase, signo, ayuda = MARCA_FUENTE.get(_FUENTES.get(u, ""), ("peq", "", ""))
+            salida.append(f'<a href="{html.escape(u)}" target="_blank" rel="noopener" title="{ayuda}">{html.escape(corto)}</a>'
+                          + (f' <span class="{clase}" title="{ayuda}">{signo}</span>' if signo else ""))
     return " · ".join(salida)
 
 
@@ -111,6 +123,8 @@ def comparacion(nombre: str, gestor, agente, coincide: bool | None) -> str:
 def obra(r: dict, v: dict, carpeta_img: Path) -> str:
     f = r.get("ficha") or {}
     c = piloto._campo
+    _FUENTES.clear()
+    _FUENTES.update(piloto.fuentes_de(r))
     foto = carpeta_img / v["imagenes"][0] if v["imagenes"] else None
     marcas = marcas_de(f)
     img = ""
@@ -188,8 +202,10 @@ def obra(r: dict, v: dict, carpeta_img: Path) -> str:
 
 
 def leyenda() -> str:
-    return " ".join(f'<span class="peq"><span class="muestra" style="border-color:{imagen.COLORES[k][0]}"></span>{n}</span>'
-                    for _, k, n in CAMPOS)
+    colores = " ".join(f'<span class="peq"><span class="muestra" style="border-color:{imagen.COLORES[k][0]}"></span>{n}</span>'
+                       for _, k, n in CAMPOS)
+    fuentes = " · ".join(f'<span class="{c}">{s}</span> <span class="peq">{a}</span>' for c, s, a in MARCA_FUENTE.values())
+    return f"{colores}<br>{fuentes}"
 
 
 def main() -> None:

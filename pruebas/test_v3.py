@@ -80,3 +80,15 @@ def test_recuadros_salen_de_campos_firma_y_sellos():
     marcas = revision.marcas_de(ficha)
     assert [(m["campo"], m["caja"]) for m in marcas] == [
         ("titulo", [10, 10, 50, 50]), ("artista", [800, 600, 900, 800]), ("editor", [700, 700, 760, 760])]
+
+
+def test_verificar_fuentes_dice_de_donde_sale_cada_url():
+    import piloto
+    ficha = {"artista": {"fuentes": ["https://www.loc.gov/item/1/", "http://museo.org/a"]},
+             "serie": {"fuentes": ["https://ukiyo-e.org/image/mfa/sc1"]},
+             "editor": {"fuentes": ["https://inventada.org/x", "https://..."]}}
+    vistas = {"https://loc.gov/item/1": "solo buscador", "https://www.loc.gov/item/1/": "abierta",
+              "https://museo.org/a": "base documentada", "https://ukiyo-e.org/image/mfa/sc1": "abierta"}
+    v = piloto.verificar_fuentes(ficha, vistas)
+    assert v == {"http://museo.org/a": "base documentada", "https://inventada.org/x": "nunca vista",
+                 "https://ukiyo-e.org/image/mfa/sc1": "abierta", "https://www.loc.gov/item/1/": "abierta"}
