@@ -543,8 +543,12 @@ def _campo(ficha: dict | None, *ruta, defecto=None):
 
 
 def filas_de(carpeta: Path, con: sqlite3.Connection) -> list[dict]:
+    """Solo las obras de la muestra: las demás no tienen en el Gestor una ficha con la que medir."""
+    muestra = set(leer_muestra())
     filas = []
     for fichero in sorted(carpeta.glob("TDP-*.json")):
+        if fichero.stem not in muestra:
+            continue
         r = json.loads(fichero.read_text(encoding="utf-8"))
         v = verdad(con, r["referencia"])
         f = r.get("ficha")
