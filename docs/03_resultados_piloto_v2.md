@@ -60,3 +60,29 @@ El listado completo, con columnas vacías para adjudicar título y serie, está 
 - **Variabilidad** entre pasadas sobre la misma obra.
 - **El tope de web por obra** se comprueba entre peticiones; una petición puede pasarse
   (hasta 16 búsquedas en una obra). No encarece mucho la media.
+
+## Trabajo real: 20 estampas que el Gestor tiene sin editor ni serie
+
+De las 299 estampas japonesas del Gestor sin editor ni serie, 20 al azar (semilla 2026,
+`piloto/sin_identificar.csv`). Coste: 9,65 € (0,48 € por obra). Aquí no hay ficha con la que
+comparar: todo lo que propone el agente es nuevo y debe revisarlo una persona.
+
+| Qué propone | Obras |
+|---|---|
+| Artista con confianza alta | 16 de 20 |
+| Serie con confianza alta | 7 (Ima Genji nishiki-e awase, Meiyo sanjūroku kassen, tres de Kannon reigenki, Enshi hana no jūnishi, y el libro Inu no sōshi) |
+| Editor con confianza alta o media | 11 |
+| Página de libro reconocida | 3 |
+
+Las que no resolvió: dos páginas de libro sin texto (TDP-007869, un halcón sobre pino que
+relaciona con Soga Chokuan, y TDP-007888, una escena del Yoshiwara en Año Nuevo) y un retrato
+póstumo de Ichikawa Danjūrō VIII sin firma legible (TDP-007659). Son justo los casos sin
+cuadros de texto que la casa anticipó como los más difíciles.
+
+Página de revisión con foto y ficha: `python revision.py claude-sonnet-5-5_v2 piloto/sin_identificar.csv`
+→ `resultados/claude-sonnet-5-5_v2/revision_sin_identificar.html`.
+
+Una obra falló la primera vez (TDP-008030, error 400): al agotar el presupuesto web se
+quitaban las herramientas web y el historial quedaba con llamadas huérfanas. Corregido:
+las herramientas no cambian dentro de una obra y el agente recibe un aviso. Repetida, salió
+con serie, título y editor en confianza alta.
