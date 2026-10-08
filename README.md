@@ -19,5 +19,7 @@ Copiar `.env.ejemplo` a `.env` y poner `ANTHROPIC_API_KEY`. El Gestor y `Z:\IMAG
 - Con Opus en las dudosas: `… catalogar --modelo claude-opus-5-5 --solo REF REF`
 - Sin web, como línea base: `… catalogar --sin-web` (resultados en `resultados/claude-sonnet-5-5_sin_web/`)
 - El informe: `./.venv/Scripts/python.exe piloto.py informe [--modelo <carpeta>]` → `resultados/<modelo>/informe.md` y `resumen.csv`
+- La página de revisión, con foto, Gestor y agente lado a lado (local, fuera de git): `./.venv/Scripts/python.exe revision.py claude-sonnet-5-5_v2` → `resultados/claude-sonnet-5-5_v2/revision.html`
+- Dos pasadas comparadas: `… piloto.py comparar <carpeta A> <carpeta B>`
 
 `resultados/` está fuera de git.
