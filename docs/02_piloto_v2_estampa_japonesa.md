@@ -45,3 +45,15 @@ censor y de editor, y tratar libros de kabuki y páginas de libro sin identifica
 - Informe de una pasada: `… informe --modelo claude-sonnet-5-5_v2`
 - Las dos, lado a lado: `… comparar claude-sonnet-5-5_v2_sin_ocr_sin_lupa claude-sonnet-5-5_v2`
 - Consultar la base de sellos a mano: `PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe sellos.py buscar 近久`
+
+## v3 (08/10/2026): fiabilidad y lectura de caracteres
+
+| # | Decisión | Por qué |
+|---|---|---|
+| P-19 | **ukiyo-e.org por `ukiyoe.py`**: búsqueda de texto y fichas, solo lo que permite su robots.txt; entre 20 y 35 s entre peticiones, también entre hilos y procesos; tope de 400 al día; caché permanente; ante 403, 429 o 5xx se para hasta el día siguiente. Está bloqueado para la web del servidor, para que todo pase por ese cliente. La búsqueda por imagen sigue siendo manual. | La casa pidió ukiyo-e.org como fuente principal sin cargar el sitio. Su robots.txt prohíbe `/upload/`. |
+| P-20 | **Base de firmas** de ukiyoesig.net (3.456 firmas) y equivalencia de kanji antiguos y modernos en las dos bases. | Probado: el OCR de la NDL no lee recortes pequeños ni con mejoras; el modelo con lupa sí, y el cotejo con listas cerradas es lo que hace fiable la lectura. |
+| P-21 | **Mejoras de imagen en la lupa** (contraste, sin rojo, solo rojo, tinta) y método de dos vistas. | Papel desvaído, sellos que pisan la tinta y foxing. Sin superresolución generativa: inventa trazos. |
+| P-22 | **Cada dato con justificación, nivel de fiabilidad (siete niveles, ukiyo-e.org arriba), fuentes y recuadros**; la revisión pinta los recuadros con un color por campo. | Pedido por la casa: saber cómo y por qué se identificó cada cosa. |
+| P-23 | **Verificación automática de fuentes**: abierta, base documentada, solo buscador o nunca vista. | En la v2, el 28 % de las URL citadas no tenía respaldo comprobable. |
+| P-24 | La revisión muestra **id de la tienda, SKU y si la ficha nació como copia**. | El SKU no es la referencia del Gestor; 130 estampas japonesas de la tienda son copias, con más discrepancias. |
+| P-25 | **Reintentos**: un turno cortado por la red se repite; un corte del NAS espera y repite la obra; una búsqueda del servidor a medias repite la obra una vez. | Pasó en la prueba de la v3. |

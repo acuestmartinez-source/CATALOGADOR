@@ -93,6 +93,7 @@ flowchart TD
 | v2, OCR + lupa + sellos | 50 | 0,57 € |
 | v2 sobre obras sin identificar | 20 | 0,48 € |
 | v2 con verificación en ukiyo-e.org | 2 | 0,92 € |
+| **v3**, 13 obras difíciles o discutidas | 13 | 0,86 € |
 
 Sobre las 50 de la muestra, contra el Gestor:
 
@@ -112,12 +113,37 @@ Sobre las 50 de la muestra, contra el Gestor:
 - **Errores humanos también.** Yo mismo leí 近久 en el sello con forma de pieza de shōgi de TDP-008194. La ficha del MFA aclara que esa forma es la marca del grabador Hori Koma (駒改彫多七), no un sello de editor. La lección vale para el sistema: la forma del sello engaña, y el cotejo con una lámina hermana documentada es lo que decide.
 - **¿Ha sido efectivo?** Sí para artista, serie y fecha: hoy sirve como primera ficha para que una persona la revise en pocos minutos. No es fiable para publicar sin revisión el editor ni el título de la hoja.
 
+### La v3 sobre 13 obras difíciles o discutidas
+
+Escogidas a propósito entre las peores: las tres de Hauta tora no maki, TDP-007990, el tríptico Meiji, las del sello 伊勢市, dos páginas de libro, una firma sin resolver y tres que el Gestor tenía sin identificar.
+
+| Medida | v2 | v3 |
+|---|---|---|
+| Campos principales con justificación | no existía | 60 de 60 |
+| Campos con recuadro en la foto | no existía | 51 de 60 |
+| Fuentes citadas sin respaldo comprobable | 28 % | 13 % (5 solo vistas en el buscador, 1 nunca vista, 1 sin comprobar) |
+| Misma estampa encontrada en ukiyo-e.org | — | 1 de 13 (TDP-007798, ficha del British Museum) |
+| Coste por obra | 0,57 € | 0,86 € |
+| Peticiones a ukiyo-e.org | — | 78 en unas dos horas y media, todas espaciadas y sin bloqueos |
+
+Niveles de los 60 datos: 25 lectura cotejada, 16 lectura sin cotejar, 7 otra lámina documentada en museo, 8 hipótesis, 2 marchante, 2 ukiyo-e.org misma estampa.
+
+Lo más relevante:
+
+- **TDP-007990.** La v3 lee la firma 五渡亭國貞画, «Gototei Kunisada ga», con dos vistas de la lupa y cotejada en la base de firmas. La v2, y también yo, habíamos leído 香蝶楼, Kōchōrō. Gototei cuadra con todo lo demás: sello kiwame solo, editor Tsuruya Kiemon y el actor Iwai Kumesaburō II, que murió en 1836. El artista sigue siendo Kunisada y no Hokushū, como dice el Gestor. Lo que cambia es la fecha: 1820–1836.
+- **Hauta tora no maki** (TDP-008133, TDP-008183 y TDP-008194). Las tres dan editor Echizenya Kajū, por el sello 越嘉 cotejado y por la ficha del MFA de la lámina nº 1, comprobada a mano. El Gestor dice Ōmiya Kyūjirō. La marca con forma de pieza de shōgi es del grabador Hori Koma.
+- **TDP-007798.** Misma estampa en ukiyo-e.org. El editor Iseya Ichiemon queda con confianza alta, contra el Iseya Ichibei del Gestor.
+- **Discrepancias nuevas de artista**, para adjudicar. TDP-007643 es una copia en la tienda y da Kunichika donde el Gestor dice Kunisada. TDP-008166 da Hiroshige III donde el Gestor dice Hiroshige II.
+- **Honestidad en lo difícil.** TDP-007659, un retrato póstumo sin firma, queda como hipótesis. TDP-007869, una página de libro sin texto, se identifica como hoja de una antología de reproducciones de pinturas, con la del Ōoka Shunboku de 1720 como hipótesis. En ninguna inventa título ni autor.
+- **Coste.** Sube a 0,86 € porque la lupa se usa más (de 9 a 13 ampliaciones) y porque estas obras son las más difíciles. Hay que medirlo sobre la muestra normal antes de concluir.
+- **Fallos de ejecución.** La red y el NAS se cortaron durante la pasada. Hubo que añadir reintentos: un turno cortado se repite y un corte del NAS espera. Y en una obra la API dejó a medias una búsqueda de su propio servidor: la obra se repite una vez. Ahora está todo cubierto.
+
 ## 4. Lectura de caracteres japoneses antiguos
 
 ### Lo que se ha comprobado
 
 - El **OCR de la NDL** lee bien cartuchos y firmas cuando lee la estampa entera. En TDP-008194 acertó 葉うた虎之巻 y 国周画. En recortes pequeños falla aunque se mejore la imagen: en la firma de TDP-007990 leyó 上沢村十方 o 貞也 donde pone 香蝶楼国貞画, y en los sellos, nada. Está entrenado con páginas de libro, no con sellos.
-- El **modelo de visión con la lupa** leyó bien 香蝶楼国貞画, y la base de firmas lo confirmó como «Kōchōrō Kunisada ga, 1831», con ficha de la Library of Congress.
+- El **modelo de visión con la lupa**, con una sola vista, leyó 香蝶楼国貞画, y yo también. Con el método de la v3 (dos vistas y cotejo con la base de firmas) leyó 五渡亭國貞画, que encaja con el sello, el editor y el actor. Una lectura convincente a primera vista puede estar mal: el cotejo es lo que la sostiene o la tumba.
 - Por tanto, la especialización no pasa por otro OCR. Pasa por **leer con método y cotejar contra listas cerradas**.
 
 ### El método de la v3
