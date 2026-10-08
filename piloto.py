@@ -433,6 +433,25 @@ def texto_pistas(pistas: list[dict]) -> str:
             "otro: tómalo como fuente principal de artista, título, serie, editor y fecha.\n" + "\n".join(lineas))
 
 
+def turno(client, intentos: int = 3, **peticion):
+    """Una petición en streaming. Si la conexión se corta a mitad, se repite entera: el turno fallido
+    no se ha añadido al historial, así que repetirlo no edita nada de lo anterior."""
+    import anthropic
+
+    for intento in range(intentos):
+        try:
+            with client.messages.stream(**peticion) as flujo:
+                return flujo.get_final_message()
+        except (anthropic.APIConnectionError, anthropic.InternalServerError) as e:
+            if intento == intentos - 1:
+                raise
+            time.sleep(15 * (intento + 1))
+        except Exception as e:  # httpx corta el cuerpo a medias con su propio error
+            if "incomplete" not in str(e) and "closed connection" not in str(e) or intento == intentos - 1:
+                raise
+            time.sleep(15 * (intento + 1))
+
+
 def catalogar_una(client, modelo: str, ficha: dict, imagenes: list[Path], con_web: bool,
                   con_ocr: bool = True, con_lupa: bool = True, pistas: list[dict] | None = None) -> dict:
     sistema = [{"type": "text", "text": PROMPT.read_text(encoding="utf-8"), "cache_control": {"type": "ephemeral"}}]
@@ -457,16 +476,8 @@ def catalogar_una(client, modelo: str, ficha: dict, imagenes: list[Path], con_we
     inicio = time.time()
     respuesta, pausas, avisado, recordado = None, 0, False, not con_web
     for _ in range(MAX_VUELTAS):
-        with client.messages.stream(
-            model=modelo,
-            max_tokens=32000,
-            system=sistema,
-            thinking={"type": "adaptive"},
-            output_config={"effort": "high"},
-            tools=herramientas(con_web, con_lupa),
-            messages=mensajes,
-        ) as flujo:
-            respuesta = flujo.get_final_message()
+        respuesta = turno(client, modelo=modelo, max_tokens=32000, system=sistema, thinking={"type": "adaptive"},
+                          output_config={"effort": "high"}, tools=herramientas(con_web, con_lupa), messages=mensajes)
         sumar_uso(uso, respuesta.usage)
         for b in respuesta.content:
             if b.type == "server_tool_use" and b.name == "web_search":
@@ -581,12 +592,20 @@ def orden_catalogar(args: argparse.Namespace) -> None:
 
     def una(trabajo) -> float:
         ref, ficha, imagenes, destino = trabajo
-        try:
-            r = catalogar_una(client, args.modelo, ficha, imagenes, not args.sin_web, not args.sin_ocr, not args.sin_lupa,
-                              pistas.get(ref))
-        except Exception as e:  # la obra que falla se apunta y se sigue; no se guarda y la próxima pasada la reintenta
-            print(f"{ref}: ERROR {type(e).__name__}: {e}", flush=True)
-            return 0.0
+        for intento in range(3):
+            try:
+                r = catalogar_una(client, args.modelo, ficha, imagenes, not args.sin_web, not args.sin_ocr,
+                                  not args.sin_lupa, pistas.get(ref))
+                break
+            except OSError as e:  # el NAS se corta a veces unos segundos: se espera y se repite
+                if intento == 2:
+                    print(f"{ref}: ERROR {type(e).__name__}: {e}", flush=True)
+                    return 0.0
+                print(f"{ref}: el NAS no responde ({e}); se repite en {60 * (intento + 1)} s", flush=True)
+                time.sleep(60 * (intento + 1))
+            except Exception as e:  # la obra que falla se apunta y se sigue; no se guarda y la próxima pasada la reintenta
+                print(f"{ref}: ERROR {type(e).__name__}: {e}", flush=True)
+                return 0.0
         destino.write_text(json.dumps(r, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"{ref}: {r['coste_eur']:.2f} € · {r['uso']['busquedas']} búsq. · {r['uso']['ampliaciones']} ampl. · "
               f"{r['duracion_s']} s" + ("" if r["ficha"] else " · SIN JSON"), flush=True)
