@@ -1,2 +1,5 @@
 anthropic>=0.80
+pillow
+opencv-python-headless
+numpy
 pytest

@@ -92,7 +92,13 @@ def _tabla() -> list[dict]:
     return json.loads(TABLA.read_text(encoding="utf-8"))
 
 
+# Formas antiguas (kyūjitai) que las estampas usan y las bases mezclan con las modernas.
+ANTIGUAS = str.maketrans("國樓畫豐廣齋齊藝實澤龜靏圓榮兒邊濱嶋壽與傳會學舊鐵圖繪團將戲寫靜驛號眞淺巖嶌鷄",
+                         "国楼画豊広斎斉芸実沢亀鶴円栄児辺浜島寿与伝会学旧鉄図絵団将戯写静駅号真浅巌島鶏")
+
+
 def _cjk(texto: str) -> set[str]:
+    texto = (texto or "").translate(ANTIGUAS)
     return {c for c in texto if unicodedata.category(c) == "Lo" and ord(c) > 0x2E80}
 
 

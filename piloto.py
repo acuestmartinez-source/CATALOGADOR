@@ -55,6 +55,7 @@ EUR_POR_USD = 0.92  # ponytail: tipo fijo; el informe dice que es aproximado
 DOMINIOS_BLOQUEADOS = [
     "artnet.com", "artprice.com", "mutualart.com", "askart.com", "invaluable.com",
     "liveauctioneers.com", "dh-jac.net", "tallerdelprado.com",
+    "ukiyo-e.org",  # sí se usa, pero SOLO por ukiyoe.py, que espera entre peticiones y respeta robots.txt
 ]
 PISTAS = RAIZ / "piloto" / "pistas.csv"  # referencia;url;nota — lo que una persona encontró a mano (p. ej. en ukiyo-e.org)
 
@@ -109,7 +110,17 @@ def verdad(con: sqlite3.Connection, referencia: str) -> dict:
             (referencia,),
         )
     ]
-    return {**dict(o), "imagenes": imagenes}
+    tienda = {"id_woo": None, "sku": "", "enlace": "", "es_copia": False, "foto_publica": ""}
+    fila = con.execute("select o.id_woo, e.json_wc from nuc_obra o left join web_espejo e on e.id_woo = o.id_woo "
+                       "and e.tipo = 'producto' where o.referencia = ?", (referencia,)).fetchone()
+    if fila and fila["json_wc"]:
+        w = json.loads(fila["json_wc"])
+        tienda = {"id_woo": fila["id_woo"], "sku": w.get("sku") or "", "enlace": w.get("permalink") or "",
+                  "es_copia": (w.get("slug") or "").startswith("copia"),
+                  "foto_publica": ((w.get("images") or [{}])[0] or {}).get("src", "")}
+    elif fila:
+        tienda["id_woo"] = fila["id_woo"]
+    return {**dict(o), "imagenes": imagenes, "tienda": tienda}
 
 
 # ---------------------------------------------------------------- muestra
@@ -166,10 +177,13 @@ def bloque_imagen(ruta: Path) -> dict:
 LUPA = {
     "name": "ampliar",
     "description": (
-        "Devuelve un recorte ampliado de una de las fotos de la estampa. Úsalo para mirar de cerca cada "
-        "sello (censor, fecha, editor, grabador, coleccionista), cada símbolo o emblema suelto, cada firma y "
-        "cada cartucho de texto antes de transcribirlos. Las coordenadas van de 0 a 1000 sobre la foto: "
-        "x de izquierda a derecha, y de arriba abajo. Un recorte pequeño se ve más grande."
+        "Devuelve un recorte ampliado de una de las fotos. Úsalo para mirar de cerca cada sello (censor, fecha, "
+        "editor, grabador, coleccionista), cada símbolo o emblema suelto, cada firma y cada cartucho de texto "
+        "antes de transcribirlos. Coordenadas de 0 a 1000 sobre la foto: x de izquierda a derecha, y de arriba "
+        "abajo. «mejora» trata la imagen para papel viejo o dañado: «contraste» iguala luces por zonas; "
+        "«sin_rojo» borra el rojo para leer la tinta negra que pisa un sello; «solo_rojo» deja solo el sello rojo; "
+        "«tinta» binariza para manchas, foxing o tinta desvaída. Ante una lectura dudosa, pide el mismo recorte con "
+        "dos mejoras distintas y quédate con lo que coincide."
     ),
     "input_schema": {
         "type": "object",
@@ -177,79 +191,110 @@ LUPA = {
             "imagen": {"type": "integer", "description": "1 para la primera foto, 2 para la segunda"},
             "x0": {"type": "integer"}, "y0": {"type": "integer"},
             "x1": {"type": "integer"}, "y1": {"type": "integer"},
+            "mejora": {"type": "string", "enum": ["ninguna", "contraste", "sin_rojo", "solo_rojo", "tinta"]},
             "motivo": {"type": "string", "description": "qué quieres ver: sello de editor, firma, cartucho…"},
         },
-        "required": ["imagen", "x0", "y0", "x1", "y1", "motivo"],
+        "required": ["imagen", "x0", "y0", "x1", "y1", "mejora", "motivo"],
         "additionalProperties": False,
     },
     "strict": True,
 }
 
 
-SELLO_EDITOR = {
-    "name": "buscar_sello_editor",
-    "description": (
-        "Busca en una base local de 4.000 sellos de editor de ukiyo-e (Ukiyo-e Publisher Seal Database de "
-        "ukiyoesig.net, sistema de formas de Marks). Pásale los caracteres que lees en el sello (por ejemplo "
-        "«近久» o «越嘉»; marca lo ilegible con □) o el nombre del editor en kanji o romaji. Devuelve editor, "
-        "nombre en kanji, lugar, texto del sello, lectura, fecha documentada, forma del sello y la URL del "
-        "ejemplar de museo donde se documentó, que puedes citar como fuente."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {"consulta": {"type": "string", "description": "caracteres leídos en el sello o nombre del editor"}},
-        "required": ["consulta"],
-        "additionalProperties": False,
-    },
-    "strict": True,
-}
+def _consulta(nombre: str, descripcion: str, campo: str, ayuda: str) -> dict:
+    return {"name": nombre, "description": descripcion, "strict": True,
+            "input_schema": {"type": "object", "properties": {campo: {"type": "string", "description": ayuda}},
+                             "required": [campo], "additionalProperties": False}}
+
+
+SELLO_EDITOR = _consulta(
+    "buscar_sello_editor",
+    "Coteja un sello de editor contra 4.020 sellos documentados (Ukiyo-e Publisher Seal Database, ukiyoesig.net, "
+    "formas de Marks). Pásale los caracteres que lees (marca lo ilegible con □) o el nombre del editor. Devuelve "
+    "editor, kanji, lugar, texto del sello, lectura, fecha documentada, forma y la URL del ejemplar de museo.",
+    "consulta", "caracteres leídos en el sello o nombre del editor")
+FIRMA = _consulta(
+    "buscar_firma",
+    "Coteja una firma contra 3.456 firmas documentadas de 2.145 nombres de artista (Ukiyo-e Signature Sample "
+    "Database, ukiyoesig.net). Pásale lo que lees en la firma, en kanji (p. ej. «香蝶楼国貞画»; □ para lo ilegible) "
+    "o un nombre en romaji. Devuelve el nombre (gagō), el artista, sus fechas, la firma documentada, su lectura, "
+    "el año del ejemplar y la URL del museo. Una lectura que no aparece en la base es una hipótesis.",
+    "consulta", "caracteres leídos en la firma o nombre del artista")
+UKIYOE_BUSCAR = _consulta(
+    "ukiyoe_buscar",
+    "Búsqueda de texto en ukiyo-e.org, la fuente principal del taller: 226.973 estampas de museos y marchantes. "
+    "Busca en inglés o romaji, sin macrones: artista y serie, o artista y actor y papel (p. ej. «Kunichika Hauta "
+    "tora», «Kunisada Kumesaburo Osato»). Devuelve hasta 24 resultados con id, título, artista y fuente. Es lenta "
+    "a propósito (espera entre peticiones para no cargar el sitio): haz pocas consultas y bien pensadas.",
+    "consulta", "términos de búsqueda")
+UKIYOE_FICHA = _consulta(
+    "ukiyoe_ficha",
+    "Abre una ficha de ukiyo-e.org por su id (p. ej. «mfa/sc190207») y devuelve título, artista con kanji, fecha, "
+    "descripción, enlace a la ficha original del museo, fuente y las estampas parecidas con su % de coincidencia "
+    "visual. Úsala para confirmar que un resultado es la misma composición y para leer sus datos.",
+    "id", "id de la ficha, como aparece en la búsqueda")
+
+TOPES = {"ampliar": MAX_AMPLIACIONES, "buscar_sello_editor": MAX_CONSULTAS_SELLO, "buscar_firma": 8,
+         "ukiyoe_buscar": 4, "ukiyoe_ficha": 6}
 
 
 def herramientas(con_web: bool, con_lupa: bool) -> list[dict]:
     """Siempre las mismas en toda la obra: quitar una rompe la caché y deja huérfanas sus llamadas del historial."""
-    lista = [LUPA, SELLO_EDITOR] if con_lupa else []
+    lista = [LUPA, SELLO_EDITOR, FIRMA] if con_lupa else []
     if con_web:
-        lista += [
-            {"type": "web_search_20260209", "name": "web_search", "max_uses": USOS_POR_PETICION,
-             "blocked_domains": DOMINIOS_BLOQUEADOS},
-            {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": USOS_POR_PETICION,
-             "blocked_domains": DOMINIOS_BLOQUEADOS, "max_content_tokens": 8000},
-        ]
+        lista += [UKIYOE_BUSCAR, UKIYOE_FICHA,
+                  {"type": "web_search_20260209", "name": "web_search", "max_uses": USOS_POR_PETICION,
+                   "blocked_domains": DOMINIOS_BLOQUEADOS},
+                  {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": USOS_POR_PETICION,
+                   "blocked_domains": DOMINIOS_BLOQUEADOS, "max_content_tokens": 8000}]
     return lista
 
 
-def consultar_sello(entrada: dict) -> str:
-    import sellos
+def ejecutar(nombre: str, entrada: dict, imagenes: list[Path]) -> list[dict] | str:
+    """Una herramienta del lado del taller. Devuelve el contenido del tool_result."""
+    if nombre == "ampliar":
+        return ampliar(imagenes, entrada)
+    if nombre == "buscar_sello_editor":
+        import sellos
 
-    filas = sellos.buscar(str(entrada.get("consulta", "")))
-    if not filas:
-        return "Ningún sello de la base comparte caracteres con esa consulta."
-    campos = ("editor", "editor_kanji", "lugar", "sello", "lectura", "fecha", "forma_nombre", "fuente")
-    return json.dumps([{k: f[k] for k in campos} for f in filas], ensure_ascii=False)
+        filas = sellos.buscar(str(entrada.get("consulta", "")))
+        campos = ("editor", "editor_kanji", "lugar", "sello", "lectura", "fecha", "forma_nombre", "fuente")
+        return json.dumps([{k: f[k] for k in campos} for f in filas], ensure_ascii=False) if filas else \
+            "Ningún sello de la base comparte caracteres con esa consulta."
+    if nombre == "buscar_firma":
+        import firmas
+
+        filas = firmas.buscar(str(entrada.get("consulta", "")))
+        campos = ("nombre", "nombre_kanji", "nombre_completo", "fechas_artista", "firma", "lectura", "fecha_firma", "fuente")
+        return json.dumps([{k: f[k] for k in campos} for f in filas], ensure_ascii=False) if filas else \
+            "Ninguna firma documentada coincide: trata tu lectura como hipótesis."
+    if nombre in ("ukiyoe_buscar", "ukiyoe_ficha"):
+        import ukiyoe
+
+        try:
+            if nombre == "ukiyoe_buscar":
+                filas = ukiyoe.buscar(str(entrada.get("consulta", "")))
+                return json.dumps(filas, ensure_ascii=False) if filas else "ukiyo-e.org no devuelve nada con esos términos."
+            return json.dumps(ukiyoe.ficha(str(entrada.get("id", ""))), ensure_ascii=False)
+        except ukiyoe.Parado as e:
+            return f"ukiyo-e.org no se consulta más hoy ({e}). Sigue con otras fuentes y dilo en «notas»."
+        except Exception as e:  # una ficha que no existe o no se entiende no tumba la obra
+            return f"No se pudo leer ukiyo-e.org: {type(e).__name__}: {e}"
+    return f"Herramienta desconocida: {nombre}"
 
 
 def ampliar(imagenes: list[Path], entrada: dict) -> list[dict]:
-    """El recorte que pide el agente, ampliado; o un texto de error que el agente puede leer."""
-    from io import BytesIO
-    from PIL import Image
+    """El recorte que pide el agente, ampliado y tratado; o un texto de error que el agente puede leer."""
+    import imagen
 
     n = int(entrada.get("imagen", 1))
     if not 1 <= n <= len(imagenes):
         return [{"type": "text", "text": f"No hay imagen {n}; hay {len(imagenes)}."}]
-    x0, y0, x1, y1 = (max(0, min(1000, int(entrada[k]))) for k in ("x0", "y0", "x1", "y1"))
-    if x1 - x0 < 5 or y1 - y0 < 5:
+    caja = tuple(max(0, min(1000, int(entrada[k]))) for k in ("x0", "y0", "x1", "y1"))
+    if caja[2] - caja[0] < 5 or caja[3] - caja[1] < 5:
         return [{"type": "text", "text": "El recuadro es demasiado pequeño o está al revés: x1 > x0 e y1 > y0."}]
-    with Image.open(imagenes[n - 1]) as im:
-        im = im.convert("RGB")
-        w, h = im.size
-        recorte = im.crop((x0 * w // 1000, y0 * h // 1000, x1 * w // 1000, y1 * h // 1000))
-    escala = LADO_AMPLIACION / max(recorte.size)
-    if escala > 1:  # solo se amplía; nunca se reduce lo que ya es grande
-        recorte = recorte.resize((round(recorte.width * escala), round(recorte.height * escala)), Image.LANCZOS)
-    buf = BytesIO()
-    recorte.save(buf, format="JPEG", quality=90)
-    return [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
-                                          "data": base64.standard_b64encode(buf.getvalue()).decode("ascii")}}]
+    recorte = imagen.ampliar_imagen(imagen.recortar(imagenes[n - 1], caja), LADO_AMPLIACION)
+    return [imagen.a_bloque(imagen.mejorar(recorte, entrada.get("mejora") or "ninguna"))]
 
 
 def ocr_ndl(imagen: Path) -> list[dict]:
@@ -343,29 +388,6 @@ def texto_pistas(pistas: list[dict]) -> str:
             "otro: tómalo como fuente principal de artista, título, serie, editor y fecha.\n" + "\n".join(lineas))
 
 
-def consulta_ukiyoe(ficha: dict | None) -> str | None:
-    """La búsqueda de texto en ukiyo-e.org que haría una persona con lo que el agente ya sabe."""
-    artista = _campo(ficha, "artista", "nombre") or ""
-    if not artista:
-        return None
-    artista = re.split(r"[(,;]", artista)[0]  # fuera paréntesis y coletillas («firma Kōchōrō…»)
-    artista = "".join(c for c in unicodedata.normalize("NFKD", artista) if not unicodedata.combining(c))
-    partes = [w for w in re.sub(r"[^\w\s-]", " ", artista).split()
-              if w.lower() not in ("utagawa", "toyohara", "tsukioka", "kitagawa", "katsushika")][:2]
-    actores = _campo(ficha, "kabuki", "actores", defecto=[]) or []
-    actor = next((a.get("actor") for a in actores if isinstance(a, dict) and a.get("actor")), "")
-    extra = (_campo(ficha, "serie", "romaji") or _campo(ficha, "titulo", "romaji") or actor
-             or _campo(ficha, "titulo", "castellano") or "")
-    extra = re.split(r"[(,;:]", extra)[0]
-    extra = "".join(c for c in unicodedata.normalize("NFKD", extra) if not unicodedata.combining(c))
-    palabras = partes + [w for w in re.sub(r"[^\w\s-]", " ", extra).split() if len(w) > 2][:4]
-    if not palabras:
-        return None
-    from urllib.parse import quote_plus
-
-    return "https://ukiyo-e.org/search?q=" + quote_plus(" ".join(palabras))
-
-
 def catalogar_una(client, modelo: str, ficha: dict, imagenes: list[Path], con_web: bool,
                   con_ocr: bool = True, con_lupa: bool = True, pistas: list[dict] | None = None) -> dict:
     sistema = [{"type": "text", "text": PROMPT.read_text(encoding="utf-8"), "cache_control": {"type": "ephemeral"}}]
@@ -384,9 +406,10 @@ def catalogar_una(client, modelo: str, ficha: dict, imagenes: list[Path], con_we
     mensajes = [{"role": "user", "content": contenido}]
     uso = dict(entrada=0, salida=0, cache_escrita=0, cache_leida=0, busquedas=0, lecturas=0, ampliaciones=0,
                consultas_sello=0)
-    consultas, lecturas, ampliaciones, sellos_consultados = [], [], [], []
+    usos = {k: 0 for k in TOPES}
+    consultas, lecturas, ampliaciones, sellos_consultados, locales = [], [], [], [], []
     inicio = time.time()
-    respuesta, pausas, avisado, verificado = None, 0, False, not con_web
+    respuesta, pausas, avisado, recordado = None, 0, False, not con_web
     for _ in range(MAX_VUELTAS):
         with client.messages.stream(
             model=modelo,
@@ -409,32 +432,31 @@ def catalogar_una(client, modelo: str, ficha: dict, imagenes: list[Path], con_we
             pausas += 1
             continue
         if respuesta.stop_reason != "tool_use":
-            if verificado:
+            if recordado or usos["ukiyoe_buscar"]:
                 break
-            # Vuelta de verificación: la búsqueda de texto en ukiyo-e.org, una sola página, como la haría una persona.
-            verificado = True
-            url = consulta_ukiyoe(extraer_json("\n".join(b.text for b in respuesta.content if b.type == "text")))
-            if not url:
-                break
-            lecturas.append(url)
+            # La fuente principal no se salta: si el agente terminó sin mirar ukiyo-e.org, se le pide una vez.
+            recordado = True
             mensajes.append({"role": "user", "content": [{"type": "text", "text": (
-                f"Comprueba ahora en ukiyo-e.org, que es la base de referencia del taller: lee {url} y, si entre "
-                "los resultados está la misma composición, abre su ficha y corrige la tuya con esos datos, citando "
-                "la URL de ukiyo-e.org como fuente. Si no está, dilo en «notas» y devuelve la ficha sin cambios. "
+                "No has consultado ukiyo-e.org, que es la fuente principal del taller. Búscala ahora con "
+                "`ukiyoe_buscar` (artista y serie, o artista y actor), abre con `ukiyoe_ficha` los resultados que "
+                "puedan ser la misma composición y corrige tu ficha si procede, citando la ficha de ukiyo-e.org. "
                 "Termina otra vez con el bloque ```json completo.")}]})
             continue
         resultados = []
         for b in respuesta.content:
             if b.type != "tool_use":
                 continue
-            if b.name == "ampliar" and uso["ampliaciones"] < MAX_AMPLIACIONES:
-                uso["ampliaciones"] += 1
-                ampliaciones.append(b.input)
-                resultados.append({"type": "tool_result", "tool_use_id": b.id, "content": ampliar(imagenes, b.input)})
-            elif b.name == "buscar_sello_editor" and uso["consultas_sello"] < MAX_CONSULTAS_SELLO:
-                uso["consultas_sello"] += 1
-                sellos_consultados.append(b.input.get("consulta", ""))
-                resultados.append({"type": "tool_result", "tool_use_id": b.id, "content": consultar_sello(b.input)})
+            if b.name in TOPES and usos[b.name] < TOPES[b.name]:
+                usos[b.name] += 1
+                locales.append({"herramienta": b.name, "entrada": b.input})
+                if b.name == "ampliar":
+                    uso["ampliaciones"] += 1
+                    ampliaciones.append(b.input)
+                elif b.name == "buscar_sello_editor":
+                    uso["consultas_sello"] += 1
+                    sellos_consultados.append(b.input.get("consulta", ""))
+                resultados.append({"type": "tool_result", "tool_use_id": b.id,
+                                   "content": ejecutar(b.name, b.input, imagenes)})
             else:
                 resultados.append({"type": "tool_result", "tool_use_id": b.id, "is_error": True,
                                    "content": "Agotado el tope de esta herramienta: sigue con lo que tienes."})
@@ -459,6 +481,8 @@ def catalogar_una(client, modelo: str, ficha: dict, imagenes: list[Path], con_we
         "lecturas": lecturas,
         "ampliaciones": ampliaciones,
         "sellos_consultados": sellos_consultados,
+        "herramientas_locales": locales,
+        "usos": usos,
         "ocr": bloques,
         "duracion_s": round(time.time() - inicio, 1),
     }
@@ -466,7 +490,7 @@ def catalogar_una(client, modelo: str, ficha: dict, imagenes: list[Path], con_we
 
 def nombre_pasada(modelo: str, sin_web: bool, sin_ocr: bool, sin_lupa: bool) -> str:
     """La carpeta de resultados dice cómo se hizo la pasada. Sin sufijos: la v2 completa."""
-    return modelo + "_v2" + "_sin_web" * sin_web + "_sin_ocr" * sin_ocr + "_sin_lupa" * sin_lupa
+    return modelo + "_v3" + "_sin_web" * sin_web + "_sin_ocr" * sin_ocr + "_sin_lupa" * sin_lupa
 
 
 def orden_catalogar(args: argparse.Namespace) -> None:
@@ -763,7 +787,7 @@ def main(argv: list[str] | None = None) -> None:
     d.add_argument("--pista", nargs="*", metavar="URL", help="páginas encontradas a mano (p. ej. el resultado de ukiyo-e.org)")
     d.set_defaults(f=orden_identificar)
     i = sub.add_parser("informe")
-    i.add_argument("--modelo", default=MODELO_POR_DEFECTO + "_v2", help="carpeta de resultados (p. ej. claude-sonnet-5-5_v2_sin_ocr)")
+    i.add_argument("--modelo", default=MODELO_POR_DEFECTO + "_v3", help="carpeta de resultados (p. ej. claude-sonnet-5-5_v2)")
     i.set_defaults(f=orden_informe)
     k = sub.add_parser("comparar", help="dos carpetas de resultados lado a lado")
     k.add_argument("a")
