@@ -500,7 +500,8 @@ def mismo_artista(gestor: str | None, agente: str | None) -> bool:
 
 
 def mismo_editor(gestor: str | None, agente: str | None) -> bool:
-    a, b = normalizar(gestor), normalizar(agente)
+    """Coincide si un nombre contiene al otro, sin espacios ni guiones (Tsuta-ya Kichizō = Tsutaya Kichizo)."""
+    a, b = normalizar(gestor).replace(" ", ""), normalizar(agente).replace(" ", "")
     return bool(a and b) and (a in b or b in a)
 
 
@@ -531,83 +532,130 @@ def _campo(ficha: dict | None, *ruta, defecto=None):
     return defecto if actual is None else actual
 
 
-def orden_informe(args: argparse.Namespace) -> None:
-    con = abrir_gestor()
-    carpeta = RESULTADOS / args.modelo
-    resultados = sorted(carpeta.glob("TDP-*.json"))
-    if not resultados:
-        sys.exit(f"No hay resultados en {carpeta}.")
+def filas_de(carpeta: Path, con: sqlite3.Connection) -> list[dict]:
     filas = []
-    for fichero in resultados:
+    for fichero in sorted(carpeta.glob("TDP-*.json")):
         r = json.loads(fichero.read_text(encoding="utf-8"))
         v = verdad(con, r["referencia"])
         f = r.get("ficha")
         fecha_agente = (_campo(f, "fecha", "desde"), _campo(f, "fecha", "hasta"))
+        sellos_leidos = _campo(f, "sellos", defecto=[]) or []
         filas.append({
             "referencia": r["referencia"],
             "error": r.get("error", "" if f else "sin JSON"),
+            "tipo_obra": _campo(f, "tipo_obra", defecto="") or "",
             "artista_gestor": v["artista"] or "",
             "artista_agente": _campo(f, "artista", "nombre", defecto="") or "",
             "conf_artista": _campo(f, "artista", "confianza", defecto="") or "",
             "acierto_artista": mismo_artista(v["artista"], _campo(f, "artista", "nombre")),
             "editor_gestor": v["editor_literal"] or "",
             "editor_agente": _campo(f, "editor", "nombre", defecto="") or "",
+            "conf_editor": _campo(f, "editor", "confianza", defecto="") or "",
+            "sello_editor_leido": (_campo(f, "editor", "sello_lectura", defecto="")
+                                   or _campo(f, "editor", "sello_leido", defecto="") or ""),
             "acierto_editor": mismo_editor(v["editor_literal"], _campo(f, "editor", "nombre")),
             "anio_gestor": v["anio"] or v["anio_literal"] or "",
             "fecha_agente": f"{fecha_agente[0] or ''}-{fecha_agente[1] or ''}" if f else "",
+            "metodo_fecha": _campo(f, "fecha", "metodo", defecto="") or "",
             "acierto_anio": mismo_anio(rango_anio(v["anio"], v["anio_literal"]), fecha_agente),
             "titulo_gestor": v["titulo"] or "",
-            "titulo_agente": _campo(f, "titulo", "castellano", defecto="") or _campo(f, "titulo", "romaji", defecto="") or "",
+            "titulo_agente": (_campo(f, "titulo", "castellano", defecto="")
+                              or _campo(f, "titulo", "romaji", defecto="") or ""),
             "adjudicacion_titulo": "",
             "serie_gestor": v["serie_literal"] or "",
-            "serie_agente": _campo(f, "serie", "castellano", defecto="") or _campo(f, "serie", "romaji", defecto="") or "",
+            "serie_agente": (_campo(f, "serie", "romaji", defecto="")
+                             or _campo(f, "serie", "castellano", defecto="") or ""),
+            "conf_serie": _campo(f, "serie", "confianza", defecto="") or "",
             "adjudicacion_serie": "",
+            "sellos_leidos": len(sellos_leidos),
+            "kabuki": bool(_campo(f, "kabuki", "obra") or _campo(f, "kabuki", "actores")),
+            "obra_mayor": _campo(f, "obra_mayor", "titulo", defecto="") or "",
             "ejemplares": len(_campo(f, "ejemplares", defecto=[]) or []),
             "busquedas": _campo(r, "uso", "busquedas", defecto=0),
+            "ampliaciones": _campo(r, "uso", "ampliaciones", defecto=0),
             "coste_eur": r.get("coste_eur", 0.0),
             "duracion_s": r.get("duracion_s", ""),
         })
+    return filas
 
+
+def metricas(filas: list[dict]) -> dict[str, str]:
+    validas = [x for x in filas if not x["error"]]
+
+    def tasa(clave, sub):
+        return f"{sum(1 for x in sub if x[clave])}/{len(sub)}" if sub else "0/0"
+
+    altas = [x for x in validas if x["conf_artista"] == "alta"]
+    editor_alto = [x for x in validas if x["conf_editor"] in ("alta", "media")]
+    coste = sum(x["coste_eur"] for x in filas)
+    n = max(1, len(filas))
+    return {
+        "Obras con ficha": f"{len(validas)}/{len(filas)}",
+        "Artista": tasa("acierto_artista", validas),
+        "Artista, con confianza alta": tasa("acierto_artista", altas),
+        "Editor": tasa("acierto_editor", validas),
+        "Editor, con confianza alta o media": tasa("acierto_editor", editor_alto),
+        "Año (±2)": tasa("acierto_anio", validas),
+        "Serie dada con confianza alta": f"{sum(1 for x in validas if x['conf_serie'] == 'alta')}/{len(validas)}",
+        "Sellos leídos por obra (media)": f"{sum(x['sellos_leidos'] for x in validas) / max(1, len(validas)):.1f}",
+        "Coste por obra": f"{coste / n:.2f} €",
+        "Coste total": f"{coste:.2f} €",
+        "Duración media": f"{sum(float(x['duracion_s'] or 0) for x in filas) / n:.0f} s",
+    }
+
+
+def orden_informe(args: argparse.Namespace) -> None:
+    con = abrir_gestor()
+    carpeta = RESULTADOS / args.modelo
+    filas = filas_de(carpeta, con)
+    if not filas:
+        sys.exit(f"No hay resultados en {carpeta}.")
     with (carpeta / "resumen.csv").open("w", newline="", encoding="utf-8-sig") as f:
         w = csv.DictWriter(f, fieldnames=list(filas[0].keys()), delimiter=";")
         w.writeheader()
         w.writerows(filas)
 
-    n = len(filas)
     validas = [x for x in filas if not x["error"]]
-    coste = sum(x["coste_eur"] for x in filas)
-
-    def tasa(clave, subconjunto=validas):
-        return f"{sum(1 for x in subconjunto if x[clave])}/{len(subconjunto)}" if subconjunto else "0/0"
-
-    altas = [x for x in validas if x["conf_artista"] == "alta"]
-    bajas = [x["referencia"] for x in validas if x["conf_artista"] in ("baja", "")]
-    lineas = [
-        f"# Informe del piloto · modelo `{args.modelo}`",
+    lineas = [f"# Informe del piloto · `{args.modelo}`", "", "| Medida | Valor |", "|---|---|"]
+    lineas += [f"| {k} | {v} |" for k, v in metricas(filas).items()]
+    lineas += [
         "",
-        f"Obras: {n} · con ficha: {len(validas)} · con error o sin JSON: {n - len(validas)}",
-        f"Coste: {coste:.2f} € en total, {coste / n:.2f} € por obra (a {EUR_POR_USD} €/USD, aproximado)",
-        "",
-        "| Campo | Acierto (automático) |",
-        "|---|---|",
-        f"| Artista | {tasa('acierto_artista')} |",
-        f"| Artista, solo confianza alta | {tasa('acierto_artista', altas)} de {len(altas)} con confianza alta |",
-        f"| Editor | {tasa('acierto_editor')} |",
-        f"| Año (rango con ±2) | {tasa('acierto_anio')} |",
-        "",
-        "Título y serie no se comparan solos: rellena `adjudicacion_titulo` y `adjudicacion_serie` en `resumen.csv`.",
-        "",
-        f"Confianza baja o sin dar en artista ({len(bajas)}): {', '.join(bajas) or 'ninguna'}",
+        f"Coste a {EUR_POR_USD} €/USD, aproximado. Título y serie no se comparan solos: "
+        "rellena `adjudicacion_titulo` y `adjudicacion_serie` en `resumen.csv`.",
         "",
         "Errores: " + (", ".join(f"{x['referencia']} ({x['error']})" for x in filas if x["error"]) or "ninguno"),
         "",
-        "Obras donde el agente discrepa del Gestor en artista (mirar quién tiene razón):",
+        "## Discrepancias con el Gestor (mirar quién tiene razón)",
+        "",
+        "| Obra | Campo | Gestor | Agente | Confianza |",
+        "|---|---|---|---|---|",
     ]
-    lineas += [f"- {x['referencia']}: Gestor «{x['artista_gestor']}» · agente «{x['artista_agente']}» ({x['conf_artista']})"
-               for x in validas if not x["acierto_artista"]] or ["- ninguna"]
-    (carpeta / "informe.md").write_text("\n".join(lineas) + "\n", encoding="utf-8")
-    print("\n".join(lineas))
-    print(f"\n→ {carpeta / 'informe.md'} y {carpeta / 'resumen.csv'}")
+    for x in validas:
+        if not x["acierto_artista"]:
+            lineas.append(f"| {x['referencia']} | artista | {x['artista_gestor']} | {x['artista_agente']} | {x['conf_artista']} |")
+        if not x["acierto_editor"]:
+            lineas.append(f"| {x['referencia']} | editor | {x['editor_gestor']} | {x['editor_agente']} "
+                          f"(sello {x['sello_editor_leido'] or '—'}) | {x['conf_editor']} |")
+    texto = "\n".join(lineas) + "\n"
+    (carpeta / "informe.md").write_text(texto, encoding="utf-8")
+    print(texto)
+    print(f"-> {carpeta / 'informe.md'} y {carpeta / 'resumen.csv'}")
+
+
+def orden_comparar(args: argparse.Namespace) -> None:
+    """Dos pasadas sobre las mismas obras, lado a lado."""
+    con = abrir_gestor()
+    a = filas_de(RESULTADOS / args.a, con)
+    b = filas_de(RESULTADOS / args.b, con)
+    comunes = {x["referencia"] for x in a} & {x["referencia"] for x in b}
+    ma = metricas([x for x in a if x["referencia"] in comunes])
+    mb = metricas([x for x in b if x["referencia"] in comunes])
+    print(f"Sobre las {len(comunes)} obras que tienen las dos pasadas")
+    print()
+    print(f"| Medida | {args.a} | {args.b} |")
+    print("|---|---|---|")
+    for k in ma:
+        print(f"| {k} | {ma[k]} | {mb[k]} |")
 
 
 # ---------------------------------------------------------------- entrada
@@ -638,6 +686,10 @@ def main(argv: list[str] | None = None) -> None:
     i = sub.add_parser("informe")
     i.add_argument("--modelo", default=MODELO_POR_DEFECTO + "_v2", help="carpeta de resultados (p. ej. claude-sonnet-5-5_v2_sin_ocr)")
     i.set_defaults(f=orden_informe)
+    k = sub.add_parser("comparar", help="dos carpetas de resultados lado a lado")
+    k.add_argument("a")
+    k.add_argument("b")
+    k.set_defaults(f=orden_comparar)
     args = p.parse_args(argv)
     args.f(args)
 
