@@ -1,6 +1,8 @@
 """Página de revisión local de una pasada: foto, ficha del Gestor y ficha del agente, lado a lado.
 
   python revision.py claude-sonnet-5-5_v2        escribe resultados/<carpeta>/revision.html
+  python revision.py claude-sonnet-5-5_v2 piloto/sin_identificar.csv
+                                                 solo las obras de esa lista -> revision_<lista>.html
 
 Solo para este PC: las fotos se enlazan desde Z:\\IMAGENES con file://, no se copian ni se suben.
 """
@@ -119,20 +121,26 @@ def obra(r: dict, v: dict, carpeta_img: Path) -> str:
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     piloto.cargar_env()
-    if len(sys.argv) != 2:
+    if len(sys.argv) not in (2, 3):
         sys.exit(__doc__)
+    lista = Path(sys.argv[2]) if len(sys.argv) == 3 else None
+    solo = None
+    if lista:
+        solo = {l.strip() for l in lista.read_text(encoding="utf-8").splitlines()[1:] if l.strip()}
     carpeta = piloto.RESULTADOS / sys.argv[1]
     con = piloto.abrir_gestor()
     imagenes = piloto.carpeta_imagenes()
     partes = []
     for fichero in sorted(carpeta.glob("TDP-*.json")):
+        if solo is not None and fichero.stem not in solo:
+            continue
         r = json.loads(fichero.read_text(encoding="utf-8"))
         partes.append(obra(r, piloto.verdad(con, r["referencia"]), imagenes))
     pagina = (f'<!doctype html><html lang="es"><head><meta charset="utf-8">'
               f'<meta name="viewport" content="width=device-width,initial-scale=1"><title>Revisión del piloto</title>'
               f"<style>{ESTILO}</style></head><body><main><h1>Revisión · {html.escape(sys.argv[1])} · {len(partes)} obras</h1>"
               f"{''.join(partes)}</main></body></html>")
-    destino = carpeta / "revision.html"
+    destino = carpeta / (f"revision_{lista.stem}.html" if lista else "revision.html")
     destino.write_text(pagina, encoding="utf-8")
     print(f"{len(partes)} obras -> {destino}")
 
