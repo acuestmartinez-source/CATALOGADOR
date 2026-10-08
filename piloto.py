@@ -476,7 +476,7 @@ def catalogar_una(client, modelo: str, ficha: dict, imagenes: list[Path], con_we
     inicio = time.time()
     respuesta, pausas, avisado, recordado = None, 0, False, not con_web
     for _ in range(MAX_VUELTAS):
-        respuesta = turno(client, modelo=modelo, max_tokens=32000, system=sistema, thinking={"type": "adaptive"},
+        respuesta = turno(client, model=modelo, max_tokens=32000, system=sistema, thinking={"type": "adaptive"},
                           output_config={"effort": "high"}, tools=herramientas(con_web, con_lupa), messages=mensajes)
         sumar_uso(uso, respuesta.usage)
         for b in respuesta.content:

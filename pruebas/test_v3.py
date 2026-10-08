@@ -92,3 +92,34 @@ def test_verificar_fuentes_dice_de_donde_sale_cada_url():
     v = piloto.verificar_fuentes(ficha, vistas)
     assert v == {"http://museo.org/a": "base documentada", "https://inventada.org/x": "nunca vista",
                  "https://ukiyo-e.org/image/mfa/sc1": "abierta", "https://www.loc.gov/item/1/": "abierta"}
+
+
+def test_turno_pasa_la_peticion_tal_cual_y_repite_un_corte():
+    import piloto
+
+    class Flujo:
+        def __init__(self, fallar):
+            self.fallar = fallar
+        def __enter__(self):
+            if self.fallar:
+                raise RuntimeError("peer closed connection without sending complete message body (incomplete chunked read)")
+            return self
+        def __exit__(self, *a):
+            return False
+        def get_final_message(self):
+            return "respuesta"
+
+    class Mensajes:
+        def __init__(self):
+            self.llamadas = []
+        def stream(self, **peticion):
+            self.llamadas.append(peticion)
+            return Flujo(len(self.llamadas) == 1)
+
+    class Cliente:
+        messages = Mensajes()
+
+    piloto.time.sleep = lambda s: None
+    cliente = Cliente()
+    assert piloto.turno(cliente, model="claude-sonnet-5-5", max_tokens=10, messages=[]) == "respuesta"
+    assert [l["model"] for l in cliente.messages.llamadas] == ["claude-sonnet-5-5", "claude-sonnet-5-5"]
