@@ -502,7 +502,13 @@ def mismo_artista(gestor: str | None, agente: str | None) -> bool:
 def mismo_editor(gestor: str | None, agente: str | None) -> bool:
     """Coincide si un nombre contiene al otro, sin espacios ni guiones (Tsuta-ya Kichizō = Tsutaya Kichizo)."""
     a, b = normalizar(gestor).replace(" ", ""), normalizar(agente).replace(" ", "")
-    return bool(a and b) and (a in b or b in a)
+    if a and b and (a in b or b in a):
+        return True
+    # Nombre comercial con o sin «ya» (Kato Seibei = Katōya Seibei): todas las palabras del Gestor en el agente.
+    def palabras(texto):
+        return {re.sub(r"ya$", "", w) for w in normalizar(texto).split() if len(w) >= 3}
+    g, ag = palabras(gestor), palabras(agente)
+    return len(g) >= 2 and g <= ag
 
 
 def rango_anio(anio: int | None, literal: str | None) -> tuple[int, int] | None:

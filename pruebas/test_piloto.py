@@ -28,6 +28,8 @@ def test_editor_contenido():
     assert mismo_editor("Tenki", "Tenki (Yamamoto Heikichi)")
     assert not mismo_editor("Tenki", "Ebisuya")
     assert not mismo_editor("", "Tenki")
+    assert mismo_editor("Kato Seibei", "Katōya Seibei (加藤屋清兵衛)")
+    assert not mismo_editor("Iseya Ichibei", "Iseya Ichiemon (伊勢屋市右衛門)")
 
 
 def test_rango_anio_del_gestor():
