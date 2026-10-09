@@ -2,7 +2,7 @@
 # Sin probar en el PC (no hay Docker): se construye en el Container Manager del NAS, como el Gestor.
 FROM python:3.12-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends git libgl1 libglib2.0-0 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends git libgl1 libglib2.0-0 tzdata && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY requirements.txt .
@@ -17,7 +17,8 @@ RUN git clone --depth 1 https://github.com/ndl-lab/ndlkotenocr-lite.git /opt/ndl
  && ln -s /opt/ndlkotenocr-lite/.venv/bin/python /opt/ndlkotenocr-lite/.venv/Scripts/python.exe
 
 COPY . .
-ENV TDP_NDL_OCR=/opt/ndlkotenocr-lite \
+ENV TZ=Europe/Madrid \
+    TDP_NDL_OCR=/opt/ndlkotenocr-lite \
     TDP_IMAGENES=/imagenes \
     TDP_INTERCAMBIO=/intercambio \
     PYTHONIOENCODING=utf-8

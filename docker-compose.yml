@@ -10,6 +10,7 @@ services:
       TDP_IMAGENES: /imagenes
       TDP_INTERCAMBIO: /intercambio
       TDP_NDL_OCR: /opt/ndlkotenocr-lite
+      TZ: Europe/Madrid  # la hora límite (--hasta) es la de Madrid, no la UTC del contenedor
       ANTHROPIC_WORKSPACE_ID: ${ANTHROPIC_WORKSPACE_ID:-}
     secrets:
       - anthropic_api_key
