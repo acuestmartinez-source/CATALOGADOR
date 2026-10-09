@@ -1,0 +1,8 @@
+.venv/
+.git/
+resultados/
+datos/
+secretos/
+.env
+__pycache__/
+*.pyc
