@@ -6,6 +6,7 @@ cómo se identificó cada dato, de qué fuente sale y con qué fiabilidad, y las
 
 - Estado actual y cómo usarlo: `docs/05_version_depurada.md`.
 - Integración con el Gestor (contrato de intercambio, servicio, contenedor, base propia): `docs/06_integracion_con_el_gestor.md`.
+- Despliegue en el NAS, contenedor propio: `docs/07_despliegue_en_el_nas.md`.
 - Análisis crítico, fuentes y vínculos SKU: `docs/04_analisis_critico.md`.
 - Historia: `docs/00` (estudio), `01` (piloto), `02` (v2 y decisiones P-11 a P-25), `03` (resultados v2).
 
