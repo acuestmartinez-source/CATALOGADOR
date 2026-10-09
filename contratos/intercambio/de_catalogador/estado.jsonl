@@ -1,0 +1,4 @@
+{"formato": "estado", "version": 1, "escrito_por": "catalogador", "escrito_en": "2026-10-09T08:00:10Z", "filas": 3}
+{"id_peticion": "idn-000001", "referencia": "TDP-008194", "estado": "leyendo", "en": "2026-10-09T08:00:10Z", "detalle": "OCR local"}
+{"id_peticion": "idn-000001", "referencia": "TDP-008194", "estado": "identificando", "en": "2026-10-09T08:00:21Z", "detalle": "fase A: lupa, firmas, sellos y ukiyo-e.org"}
+{"id_peticion": "idn-000001", "referencia": "TDP-008194", "estado": "lista", "en": "2026-10-09T08:06:40Z", "detalle": "0.41 € · fases A"}

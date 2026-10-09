@@ -25,7 +25,7 @@ ESFUERZO = "medium"
 MAX_VUELTAS = 30          # peticiones a la API por obra, por si algo se enreda
 MAX_REANUDACIONES = 5     # pause_turn del servidor
 LADO_AMPLIACION = 1400
-TOPES = {"ampliar": 10, "buscar_sello_editor": 6, "buscar_firma": 5, "ukiyoe_buscar": 3, "ukiyoe_ficha": 4}
+TOPES = {"ampliar": 10, "buscar_sello_editor": 6, "buscar_firma": 5, "datar_censor": 3, "ukiyoe_buscar": 3, "ukiyoe_ficha": 4}
 WEB_POR_PETICION = 4      # max_uses de la API, que cuenta por petición
 WEB_POR_OBRA = 8          # tope de búsquedas, y otro de lecturas, sumando la fase B entera
 
@@ -45,8 +45,11 @@ def cliente():
     """El cliente de la API. Una clave de organización necesita además ANTHROPIC_WORKSPACE_ID."""
     import anthropic
 
+    secreto = Path(os.environ.get("ANTHROPIC_API_KEY_FILE", "/run/secrets/anthropic_api_key"))
+    if not os.environ.get("ANTHROPIC_API_KEY") and secreto.exists():
+        os.environ["ANTHROPIC_API_KEY"] = secreto.read_text(encoding="utf-8").strip()
     if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise SystemExit("Falta ANTHROPIC_API_KEY en .env.")
+        raise SystemExit("Falta ANTHROPIC_API_KEY en .env (o el secreto de Docker).")
     cabeceras = {}
     if os.environ.get("ANTHROPIC_WORKSPACE_ID"):
         cabeceras["anthropic-workspace-id"] = os.environ["ANTHROPIC_WORKSPACE_ID"]
@@ -100,7 +103,22 @@ UKIYOE_FICHA = _consulta(
     "descripción, enlace al museo y estampas parecidas con su % de coincidencia visual.",
     "id", "id de la ficha")
 
-HERRAMIENTAS_A = [LUPA, FIRMA, SELLO, UKIYOE_BUSCAR, UKIYOE_FICHA]
+CENSOR = {
+    "name": "datar_censor",
+    "description": (
+        "Los años posibles según los sellos de censura: tipo (kiwame, un_censor, dos_censores, dos_censores_fecha, "
+        "aratame_separado, fecha_sola, combinado, nengo), el animal del zodiaco si lo hay (carácter o nombre) y los "
+        "censores nominativos leídos (p. ej. 村, 衣笠). Devuelve la lista de años, no la inventes."),
+    "input_schema": {"type": "object", "properties": {
+        "tipo": {"type": "string", "enum": ["kiwame", "un_censor", "dos_censores", "dos_censores_fecha", "aratame_separado",
+                                           "fecha_sola", "combinado", "nengo"]},
+        "animal": {"type": ["string", "null"]}, "mes": {"type": ["integer", "null"]},
+        "censores": {"type": "array", "items": {"type": "string"}}},
+        "required": ["tipo", "animal", "mes", "censores"], "additionalProperties": False},
+    "strict": True,
+}
+
+HERRAMIENTAS_A = [LUPA, FIRMA, SELLO, CENSOR, UKIYOE_BUSCAR, UKIYOE_FICHA]
 HERRAMIENTAS_B = HERRAMIENTAS_A + [
     {"type": "web_search_20260209", "name": "web_search", "max_uses": WEB_POR_PETICION, "blocked_domains": DOMINIOS_BLOQUEADOS},
     {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": WEB_POR_PETICION, "blocked_domains": DOMINIOS_BLOQUEADOS,
@@ -128,20 +146,31 @@ def ejecutar(nombre: str, entrada: dict, imagenes: list[Path]) -> list[dict] | s
     """Una herramienta del taller. Devuelve el contenido del tool_result."""
     if nombre == "ampliar":
         return ampliar(imagenes, entrada)
-    if nombre == "buscar_sello_editor":
-        import sellos
+    if nombre in ("buscar_sello_editor", "buscar_firma"):
+        import biblioteca
 
-        filas = sellos.buscar(str(entrada.get("consulta", "")), limite=8)
-        campos = ("editor", "editor_kanji", "lugar", "sello", "lectura", "fecha", "forma_nombre", "fuente")
-        return json.dumps([{k: f[k] for k in campos} for f in filas], ensure_ascii=False) if filas else \
-            "Ningún sello documentado comparte caracteres con esa lectura."
-    if nombre == "buscar_firma":
-        import firmas
+        consulta = str(entrada.get("consulta", ""))
+        propias = biblioteca.buscar("sello" if nombre == "buscar_sello_editor" else "firma", consulta)
+        if nombre == "buscar_sello_editor":
+            import sellos
 
-        filas = firmas.buscar(str(entrada.get("consulta", "")), limite=8)
-        campos = ("nombre", "nombre_completo", "fechas_artista", "firma", "lectura", "fecha_firma", "fuente")
-        return json.dumps([{k: f[k] for k in campos} for f in filas], ensure_ascii=False) if filas else \
-            "Ninguna firma documentada coincide: trata tu lectura como no cotejada."
+            filas = sellos.buscar(consulta, limite=8)
+            campos = ("editor", "editor_kanji", "lugar", "sello", "lectura", "fecha", "forma_nombre", "fuente")
+            vacio = "Ningún sello documentado comparte caracteres con esa lectura."
+        else:
+            import firmas
+
+            filas = firmas.buscar(consulta, limite=8)
+            campos = ("nombre", "nombre_completo", "fechas_artista", "firma", "lectura", "fecha_firma", "fuente")
+            vacio = "Ninguna firma documentada coincide: trata tu lectura como no cotejada."
+        salida = {"confirmadas_por_el_taller": [{k: f[k] for k in ("referencia", "lectura", "nombre", "parecido")} for f in propias],
+                  "documentadas": [{k: f[k] for k in campos} for f in filas]}
+        return json.dumps(salida, ensure_ascii=False) if propias or filas else vacio
+    if nombre == "datar_censor":
+        import censor
+
+        return json.dumps(censor.datar(str(entrada.get("tipo", "")), entrada.get("animal") or None,
+                                       entrada.get("mes"), entrada.get("censores") or []), ensure_ascii=False)
     if nombre in ("ukiyoe_buscar", "ukiyoe_ficha"):
         import ukiyoe
 

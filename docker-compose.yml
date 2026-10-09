@@ -1,0 +1,29 @@
+# CATALOGADOR al lado del Gestor, en el NAS. Comparte con él solo dos carpetas: las imágenes (solo
+# lectura) y el intercambio. La clave de la API va en un fichero de secreto, nunca en el compose.
+services:
+  catalogador:
+    build: .
+    image: catalogador:${CATALOGADOR_ETIQUETA:-latest}
+    container_name: catalogador
+    restart: unless-stopped
+    environment:
+      TDP_IMAGENES: /imagenes
+      TDP_INTERCAMBIO: /intercambio
+      TDP_NDL_OCR: /opt/ndlkotenocr-lite
+      ANTHROPIC_WORKSPACE_ID: ${ANTHROPIC_WORKSPACE_ID:-}
+    secrets:
+      - anthropic_api_key
+    volumes:
+      - ${TDP_IMAGENES_EN_EL_NAS:?pon la carpeta de imágenes del Gestor}:/imagenes:ro
+      - ${TDP_INTERCAMBIO_EN_EL_NAS:?pon la carpeta _intercambio del Gestor}:/intercambio
+      - catalogador_datos:/app/datos
+      - catalogador_resultados:/app/resultados
+    command: ["python", "servicio.py", "--hasta", "${CATALOGADOR_HASTA:-13:00}"]
+
+secrets:
+  anthropic_api_key:
+    file: ${ANTHROPIC_API_KEY_FICHERO:-./secretos/anthropic_api_key}
+
+volumes:
+  catalogador_datos:
+  catalogador_resultados:
