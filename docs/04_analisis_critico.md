@@ -1,5 +1,7 @@
 # CATALOGADOR · análisis crítico del sistema · 08/10/2026
 
+> Superado en parte por `05_version_depurada.md` (09/10/2026): ficha esencial, dos fases, memoria de series, lo publicable y el horario.
+
 Pedido por la casa: cómo funciona y cómo está consolidado, con detalle y crítica; qué fuentes
 usa; evaluación de todo lo analizado; cuándo sería más barato; cómo leer mejor caracteres
 japoneses antiguos, también en fotos pobres o papel dañado; justificación y recuadros por dato;

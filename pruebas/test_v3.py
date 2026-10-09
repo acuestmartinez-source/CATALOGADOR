@@ -83,7 +83,7 @@ def test_recuadros_salen_de_campos_firma_y_sellos():
 
 
 def test_verificar_fuentes_dice_de_donde_sale_cada_url():
-    import piloto
+    import agente as piloto
     ficha = {"artista": {"fuentes": ["https://www.loc.gov/item/1/", "http://museo.org/a"]},
              "serie": {"fuentes": ["https://ukiyo-e.org/image/mfa/sc1"]},
              "editor": {"fuentes": ["https://inventada.org/x", "https://..."]}}
@@ -95,7 +95,7 @@ def test_verificar_fuentes_dice_de_donde_sale_cada_url():
 
 
 def test_turno_pasa_la_peticion_tal_cual_y_repite_un_corte(monkeypatch):
-    import piloto
+    import agente as piloto
 
     class Flujo:
         def __init__(self, fallar):
