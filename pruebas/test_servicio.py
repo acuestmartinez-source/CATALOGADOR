@@ -126,3 +126,13 @@ def test_la_herramienta_del_agente_junta_lo_propio_y_lo_documentado(tmp_path, mo
     assert salida["confirmadas_por_el_taller"][0]["referencia"] == "TDP-1"
     assert any(d["editor"] == "Echizenya Kajū" for d in salida["documentadas"])
     assert json.loads(agente.ejecutar("datar_censor", {"tipo": "combinado", "animal": "丑", "mes": 2, "censores": []}, []))["anos"] == [1865]
+
+
+def test_en_cola_se_escribe_una_vez_aunque_la_peticion_quede_aplazada_muchas_vueltas(tmp_path, monkeypatch):
+    inter, imagenes = _montar(tmp_path, monkeypatch)
+    s = servicio.Servicio(inter, imagenes, hasta="00:00")
+    s.vuelta()
+    s.vuelta()
+    servicio.Servicio(inter, imagenes, hasta="00:00").vuelta()  # otro proceso, mismo estado en disco
+    estados = [e["estado"] for e in servicio.leer_jsonl(inter / "de_catalogador" / "estado.jsonl") if e["id_peticion"] == "idn-000001"]
+    assert estados.count("en_cola") == 1 and estados.count("aplazada") == 3

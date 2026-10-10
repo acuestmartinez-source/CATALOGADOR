@@ -68,7 +68,7 @@ def leer_hecho() -> dict:
     try:
         return json.loads(HECHO.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return {"peticiones": [], "aceptadas": []}
+        return {"peticiones": [], "aceptadas": [], "anunciadas": []}
 
 
 def guardar_hecho(h: dict) -> None:
@@ -192,9 +192,16 @@ class Servicio:
 
     def vuelta(self) -> int:
         grupos = self.pendientes()
+        anunciadas = self.hecho.setdefault("anunciadas", [])
         for grupo in grupos:
             for p in grupo:
-                self.estado_de(p, "en_cola", f"grupo de {len(grupo)}") if not self.en_seco else None
+                # `en_cola` se escribe UNA vez por petición: repetirlo en cada vuelta rompía en el
+                # Gestor la racha de «aplazada» y la ficha decía «hace un momento» toda la noche.
+                if not self.en_seco and p["id_peticion"] not in anunciadas:
+                    self.estado_de(p, "en_cola", f"grupo de {len(grupo)}")
+                    anunciadas.append(p["id_peticion"])
+        if grupos and not self.en_seco:
+            guardar_hecho(self.hecho)
         for grupo in grupos:
             for p in grupo:
                 self.una(p)
