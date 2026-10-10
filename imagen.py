@@ -135,8 +135,9 @@ def anotar(ruta: Path, marcas: list[dict], lado: int = 1100) -> Image.Image:
     try:
         letra = ImageFont.truetype("arial.ttf", max(12, w // 60))
     except OSError:
-        letra = ImageFont.load_default()
+        letra = ImageFont.load_default(size=max(12, w // 60))  # Pillow ≥10.1: escalable y con tildes
     grosor = max(2, w // 300)
+    etiquetas = []
     for m in marcas:
         caja = m.get("caja")
         if not caja or len(caja) != 4:
@@ -147,10 +148,12 @@ def anotar(ruta: Path, marcas: list[dict], lado: int = 1100) -> Image.Image:
             continue
         r = (x0 * w // 1000, y0 * h // 1000, x1 * w // 1000, y1 * h // 1000)
         d.rectangle(r, outline=color, width=grosor)
-        etiqueta = m.get("etiqueta") or COLORES.get(m.get("campo"), COLORES["otro"])[1]
-        tx, ty = r[0], max(0, r[1] - letra.size - 4) if hasattr(letra, "size") else max(0, r[1] - 16)
-        caja_txt = d.textbbox((tx, ty), etiqueta, font=letra)
-        d.rectangle(caja_txt, fill=color)
+        etiquetas.append((r, color, m.get("etiqueta") or COLORES.get(m.get("campo"), COLORES["otro"])[1]))
+    for r, color, etiqueta in etiquetas:  # las palabras encima de todos los recuadros, para que ninguno las tape
+        ancho = d.textlength(etiqueta, font=letra)
+        tx = max(0, min(r[0], w - int(ancho) - 2))  # la etiqueta nunca se sale de la foto
+        ty = max(0, r[1] - letra.size - 4) if hasattr(letra, "size") else max(0, r[1] - 16)
+        d.rectangle(d.textbbox((tx, ty), etiqueta, font=letra), fill=color)
         d.text((tx, ty), etiqueta, fill="white", font=letra)
     return im
 

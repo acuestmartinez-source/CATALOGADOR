@@ -77,8 +77,21 @@ def test_el_servicio_atiende_la_cola_del_contrato_y_escribe_el_contrato(tmp_path
     # la segunda obra del grupo recibió la serie que documentó la primera
     guardado = json.loads((tmp_path / "resultados" / "servicio" / "TDP-008133.json").read_text(encoding="utf-8"))
     assert guardado["series_usadas"] == ["葉うた虎之巻"]
+    # la foto anotada está ANTES que su línea, y la lectura de la firma y del sello va en su clave
+    assert fichas[0]["anotada"] == "anotadas/idn-000001.jpg"
+    with Image.open(inter / "de_catalogador" / fichas[0]["anotada"]) as im:
+        assert max(im.size) <= 1100
+    assert fichas[0]["datos"]["autor"]["lectura"] == "國周画" and fichas[0]["datos"]["editor"]["lectura"] == "越嘉"
+    assert not list((inter / "de_catalogador" / "anotadas").glob("*.parcial"))
     # no repite
     assert servicio.Servicio(inter, imagenes).vuelta() == 0
+
+
+def test_sin_cajas_no_hay_foto_anotada(tmp_path):
+    linea = {"id_peticion": "idn-9", "referencia": "TDP-1", "datos": {"autor": {"cajas": []}}}
+    assert servicio.anotar(tmp_path / "no_existe.jpg", linea, tmp_path / "anotadas") is None
+    linea["datos"]["autor"]["cajas"] = [[0, 0, 10, 10]]
+    assert servicio.anotar(tmp_path / "no_existe.jpg", linea, tmp_path / "anotadas") is None  # no tumba la ficha
 
 
 def test_el_servicio_aprende_de_lo_aceptado(tmp_path, monkeypatch):

@@ -103,7 +103,9 @@ def ficha_de_intercambio(peticion: dict, r: dict) -> dict:
                    f"lámina {d['numero_lamina']}" if d.get("numero_lamina") else None) if x) or None, "titulo": None}[campo]
         datos[campo] = {"valor": F.valor(fi, campo) or None, "detalle": detalle, "fiabilidad": F.fiabilidad(fi, campo),
                         "nivel": F.nivel(fi, campo) or None, "como": d.get("como"), "fuentes": d.get("fuentes") or [],
-                        "cajas": d.get("cajas") or []}
+                        "cajas": d.get("cajas") or [],
+                        "lectura": {"autor": d.get("firma"), "editor": d.get("sello"),
+                                    "censor": d.get("lectura") or d.get("sello")}.get(campo)}
         if campo == "titulo":
             datos[campo]["construido"] = bool(d.get("construido"))
     return {"id_peticion": peticion["id_peticion"], "referencia": peticion["referencia"], "version_catalogador": "v4",
@@ -111,7 +113,31 @@ def ficha_de_intercambio(peticion: dict, r: dict) -> dict:
             "fases": r.get("fases"), "tipo_obra": fi.get("tipo_obra"), "datos": datos,
             "para_web": r.get("para_web") or F.para_web(fi),
             "vinculadas": [v for v in fi.get("vinculadas") or [] if isinstance(v, dict)],
-            "fuentes_verificadas": r.get("fuentes_verificadas") or {}, "error": None}
+            "fuentes_verificadas": r.get("fuentes_verificadas") or {}, "anotada": None, "error": None}
+
+
+#: La palabra de cada dato en la foto anotada: la misma que pinta el Gestor en su tabla.
+PALABRAS = {"autor": "Autor", "titulo": "Título", "serie": "Serie", "editor": "Editor", "censor": "Censor", "tecnica": "Técnica"}
+
+
+def anotar(foto: Path, linea: dict, carpeta: Path) -> str | None:
+    """La primera foto con un recuadro de color y su palabra por dato. Devuelve la ruta relativa a
+    `de_catalogador/`, o None si no hay recuadros o no se pudo dibujar (la ficha sale igual)."""
+    marcas = [{"campo": "artista" if c == "autor" else c, "caja": caja, "etiqueta": PALABRAS[c]}
+              for c, d in linea["datos"].items() for caja in d.get("cajas") or []]
+    if not marcas:
+        return None
+    try:
+        from imagen import anotar as dibujar
+        carpeta.mkdir(parents=True, exist_ok=True)
+        destino = carpeta / f"{linea['id_peticion']}.jpg"
+        parcial = destino.with_suffix(".parcial")
+        dibujar(foto, marcas).save(parcial, "JPEG", quality=85)
+        parcial.replace(destino)
+    except Exception as e:  # una foto que no se deja dibujar no tumba la propuesta
+        print(f"{linea['referencia']}: sin foto anotada ({type(e).__name__})", flush=True)
+        return None
+    return f"{carpeta.name}/{destino.name}"
 
 
 class Servicio:
@@ -120,6 +146,7 @@ class Servicio:
         self.aceptadas = intercambio / "para_catalogador" / "aceptadas.jsonl"
         self.estado = intercambio / "de_catalogador" / "estado.jsonl"
         self.fichas = intercambio / "de_catalogador" / "fichas.jsonl"
+        self.anotadas = intercambio / "de_catalogador" / "anotadas"
         self.imagenes, self.hasta, self.en_seco = imagenes, hasta, en_seco
         self.client = None
         self.hecho = leer_hecho()
@@ -169,15 +196,18 @@ class Servicio:
         F.recordar_serie(MEMORIA, r.get("ficha"), p["referencia"])
         (RAIZ / "resultados" / "servicio").mkdir(parents=True, exist_ok=True)
         (RAIZ / "resultados" / "servicio" / f"{p['referencia']}.json").write_text(json.dumps(r, ensure_ascii=False, indent=2), encoding="utf-8")
-        self.terminar(p, r, None)
+        self.terminar(p, r, None, fotos[0])
 
-    def terminar(self, p: dict, r: dict | None, error: str | None) -> None:
+    def terminar(self, p: dict, r: dict | None, error: str | None, foto: Path | None = None) -> None:
         if error:
             anadir(self.fichas, {"id_peticion": p["id_peticion"], "referencia": p["referencia"], "version_catalogador": "v4",
                                  "terminado_en": _ahora(), "datos": {}, "para_web": {}, "vinculadas": [], "error": error}, "fichas")
             self.estado_de(p, "error", error)
         else:
-            anadir(self.fichas, ficha_de_intercambio(p, r), "fichas")
+            linea = ficha_de_intercambio(p, r)
+            if foto is not None:  # la imagen se escribe ANTES que la línea: quien lee la línea la encuentra
+                linea["anotada"] = anotar(foto, linea, self.anotadas)
+            anadir(self.fichas, linea, "fichas")
             self.estado_de(p, "lista", f"{r.get('coste_eur', 0):.2f} € · fases {r.get('fases')}")
         self.hecho["peticiones"].append(p["id_peticion"])
         guardar_hecho(self.hecho)
