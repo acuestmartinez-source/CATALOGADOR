@@ -136,3 +136,25 @@ def test_en_cola_se_escribe_una_vez_aunque_la_peticion_quede_aplazada_muchas_vue
     servicio.Servicio(inter, imagenes, hasta="00:00").vuelta()  # otro proceso, mismo estado en disco
     estados = [e["estado"] for e in servicio.leer_jsonl(inter / "de_catalogador" / "estado.jsonl") if e["id_peticion"] == "idn-000001"]
     assert estados.count("en_cola") == 1 and estados.count("aplazada") == 3
+
+
+def test_un_fallo_no_saca_al_intercambio_rutas_ni_textos_de_la_excepcion(tmp_path, monkeypatch):
+    inter, imagenes = _montar(tmp_path, monkeypatch)
+
+    def revienta(client, obra, fotos, **kw):
+        raise RuntimeError(r"Permission denied: \nas\TDP\_intercambio\cola.jsonl {'error': 'cuerpo de la API'}")
+
+    monkeypatch.setattr(agente, "catalogar", revienta)
+    servicio.Servicio(inter, imagenes).vuelta()
+    texto = (inter / "de_catalogador" / "fichas.jsonl").read_text(encoding="utf-8") + (inter / "de_catalogador" / "estado.jsonl").read_text(encoding="utf-8")
+    for prohibido in ("\\nas", "_intercambio", "cola.jsonl", "Permission", "cuerpo de la API"):
+        assert prohibido not in texto
+    assert "fallo del catalogador (RuntimeError)" in texto
+    assert (tmp_path / "resultados" / "servicio" / "TDP-008194.error.txt").read_text(encoding="utf-8").startswith("RuntimeError: Permission denied")
+    assert all(ord(c) < 128 for c in texto)  # ASCII puro en el intercambio
+
+
+def test_motivo_sin_detalles():
+    assert "intercambio" in servicio.motivo_sin_detalles(OSError(13, "Permission denied", r"\nas\x"))
+    assert "API" in servicio.motivo_sin_detalles(type("APIConnectionError", (Exception,), {})())
+    assert servicio.motivo_sin_detalles(ValueError("x")) == "fallo del catalogador (ValueError); mira el registro del contenedor catalogador"

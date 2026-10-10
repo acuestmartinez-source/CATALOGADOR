@@ -35,6 +35,15 @@ lee de `/run/secrets/anthropic_api_key`; `agente.cliente()` la busca ahí si no 
 3. **Comprobar.** En el registro del contenedor debe salir `cola: /intercambio/para_catalogador/cola.jsonl · fotos: /imagenes` y, cada 15 segundos, nada más mientras la cola esté vacía. Para probarlo sin el Gestor: copiar a mano `contratos/intercambio/para_catalogador/cola.jsonl` a `_intercambio/para_catalogador/` con una referencia real y ver aparecer `de_catalogador/estado.jsonl` y `fichas.jsonl`.
 4. **Horario.** `--hasta 13:00` deja «aplazada» cualquier petición que llegue más tarde y la retoma al día siguiente a partir de las 06:00 (el contenedor sigue vivo; la hora es la del NAS, que debe estar en Europe/Madrid).
 
+## 2 bis. El día que el Gestor encienda el almacén único
+
+El NÚCLEO 0.23.0 sabe copiar las fotos a `<FOTO>/obras/<ref>/web/` (`herramientas/almacen unificar`) y
+tiene el interruptor `TDP_ALMACEN_UNICO_ENCENDIDO`. Mientras esté apagado, las rutas de `cola.jsonl`
+son `originales/<ref>/…` relativas a `Z:\IMAGENES`, que es lo que monta este contenedor. **Cuando se
+encienda**, las rutas pasarán a ser relativas a la raíz de `Z:\FOTO`: ese día se cambia
+`TDP_IMAGENES_EN_EL_NAS` en el `.env` de CATALOGADOR a esa carpeta y se recrea el contenedor. Es la
+condición que el Gestor apunta junto a SALIDAS y VERIFICADOR (D-1001, nota del orquestador al fusionar).
+
 ## 3. Lo que no se hace
 
 Montar las imágenes con escritura (van `:ro`). Poner la clave en `.env` o en el compose. Tocar la

@@ -59,9 +59,22 @@ def anadir(ruta: Path, fila: dict, formato: str) -> None:
             if nuevo:
                 f.write(json.dumps({"formato": formato, "version": 1, "escrito_por": "catalogador",
                                     "escrito_en": _ahora(), "filas": 0}, ensure_ascii=False) + "\n")
-            f.write(json.dumps(fila, ensure_ascii=False) + "\n")
+            # ASCII puro a propósito: el Gestor lee con UTF-8 estricto, y si lee justo cuando una línea
+            # está a medio escribir, un corte dentro de un carácter de varios bytes rompería la lectura
+            # entera. Con \\uXXXX cualquier corte deja bytes válidos y solo una línea rota, que tolera.
+            f.write(json.dumps(fila, ensure_ascii=True) + "\n")
             f.flush()
             os.fsync(f.fileno())
+
+
+def motivo_sin_detalles(e: Exception) -> str:
+    """Lo que el Gestor puede enseñar de un fallo: la clase de problema, nunca el texto de la excepción."""
+    nombre = type(e).__name__
+    if isinstance(e, OSError):
+        return "no se pudo leer la foto o escribir en el intercambio; mira el registro del contenedor catalogador"
+    if "anthropic" in type(e).__module__ or nombre in ("APIConnectionError", "APIStatusError", "RateLimitError"):
+        return "la API de identificación no respondió o rechazó la petición; mira el registro del contenedor catalogador"
+    return f"fallo del catalogador ({nombre}); mira el registro del contenedor catalogador"
 
 
 def leer_hecho() -> dict:
@@ -144,8 +157,14 @@ class Servicio:
                 self.client = agente.cliente()
             r = agente.catalogar(self.client, {"referencia": p["referencia"], "alto_cm": p.get("alto_cm"), "ancho_cm": p.get("ancho_cm")},
                                  fotos, series=series, pistas=p.get("pistas") or None)
-        except Exception as e:  # la petición queda en error con su motivo; el Gestor puede volver a pedirla
-            self.terminar(p, None, f"{type(e).__name__}: {e}")
+        except Exception as e:  # la petición queda en error; el Gestor puede volver a pedirla
+            # Al intercambio va un motivo FIJO: el texto de una excepción puede llevar una ruta del NAS
+            # o el cuerpo de un error de la API, y la ficha del Gestor lo pinta a cualquier cuenta.
+            # El texto entero queda en el registro del contenedor y en resultados/servicio/.
+            print(f"{p['referencia']}: {type(e).__name__}: {e}", flush=True)
+            (RAIZ / "resultados" / "servicio").mkdir(parents=True, exist_ok=True)
+            (RAIZ / "resultados" / "servicio" / f"{p['referencia']}.error.txt").write_text(f"{type(e).__name__}: {e}\n", encoding="utf-8")
+            self.terminar(p, None, motivo_sin_detalles(e))
             return
         F.recordar_serie(MEMORIA, r.get("ficha"), p["referencia"])
         (RAIZ / "resultados" / "servicio").mkdir(parents=True, exist_ok=True)

@@ -9,11 +9,15 @@ otro. Cada fichero `.jsonl` empieza con una línea de cabecera (`formato`, `vers
 
 | Fichero | Lo publica | Qué es |
 |---|---|---|
-| `para_catalogador/cola.jsonl` | IDENTIFICACION (Gestor) | Lo que una persona pidió identificar: una obra o un grupo. `grupo` y `serie_conocida` son opcionales; `pistas` son páginas encontradas a mano (la búsqueda por imagen de ukiyo-e.org). Se **añade** al final; `id_peticion` es único y no se repite. |
+| `para_catalogador/cola.jsonl` | IDENTIFICACION (Gestor) | Lo que una persona pidió identificar: una obra o un grupo. `grupo` y `serie_conocida` son opcionales; `pistas` son páginas encontradas a mano (la búsqueda por imagen de ukiyo-e.org). `id_peticion` es único y no se repite. **IDENTIFICACION lo reescribe entero** (con `.parcial` y renombrado, y `filas` al día, D-1003); CATALOGADOR lo lee entero en cada vuelta y salta los ids que ya atendió, así que da igual que crezca o que se reescriba. |
 | `para_catalogador/aceptadas.jsonl` | IDENTIFICACION (Gestor) | Lo que una persona aceptó, corrigió o rechazó, campo a campo, y la firma y los sellos que confirmó con su recuadro. Es lo que alimenta la biblioteca propia y el conjunto de oro. |
 | `de_catalogador/estado.jsonl` | CATALOGADOR | El estado de cada petición: `en_cola`, `leyendo`, `identificando`, `lista`, `error`, `aplazada` (pasada la hora límite). Se añade al final; vale la última línea de cada `id_peticion`. |
 | `de_catalogador/fichas.jsonl` | CATALOGADOR | La propuesta: seis datos con valor, detalle, fiabilidad, nivel, cómo, fuentes y cajas (0–1000 sobre la primera imagen); `para_web`; `vinculadas`; `fuentes_verificadas`. Una línea por petición terminada, se añade al final. |
 
 Los dos lados escriben con `.parcial` y renombrado atómico cuando reescriben, y en modo «añadir
-una línea entera» cuando añaden. Un campo nuevo es opcional; ningún campo existente cambia de
+una línea entera» cuando añaden. Los dos ficheros que publica CATALOGADOR (`estado`, `fichas`) solo
+crecen: su cabecera lleva `filas: 0` desde que se estrena y el lector no se fía de esa cifra. Las
+líneas van en ASCII puro (secuencias de escape para lo que no sea ASCII), para que una lectura a
+medio escribir nunca rompa el UTF-8. El `detalle` de un estado `error` es un motivo fijo, sin texto
+de excepción ni ruta. Un campo nuevo es opcional; ningún campo existente cambia de
 significado sin fecha de retirada (§13).
