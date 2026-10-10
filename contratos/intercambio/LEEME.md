@@ -15,6 +15,8 @@ otro. Cada fichero `.jsonl` empieza con una línea de cabecera (`formato`, `vers
 | `de_catalogador/fichas.jsonl` | CATALOGADOR | La propuesta: seis datos con valor, detalle, fiabilidad, nivel, cómo, fuentes, cajas (0–1000 sobre la primera imagen) y `lectura` (lo que dice la firma, el sello de editor o el de censor, en sus caracteres; nulo en los demás); `para_web`; `vinculadas`; `fuentes_verificadas`; `anotada`. Una línea por petición terminada, se añade al final. |
 | `de_catalogador/anotadas/<id_peticion>.jpg` | CATALOGADOR | La primera imagen, a 1.100 px de lado mayor, con un recuadro de color y la palabra del dato (Autor, Título, Serie, Editor, Censor) por cada caja. `anotada` en la ficha es su ruta relativa a `de_catalogador/`, o nulo si no hay cajas. Se escribe con `.parcial` y renombrado **antes** que la línea de la ficha. Los colores son de CATALOGADOR; la palabra es la que pinta el Gestor en su tabla. |
 
+**El orden es contrato** (10/10/2026, D-1167 del Gestor): la línea de `fichas.jsonl` de una petición, también la que trae `error`, se añade **antes** que su `lista` o su `error` en `estado.jsonl`. El Gestor se apoya en ese orden para no pagar dos veces: si una petición está `lista` y su línea no está en `fichas.jsonl`, no va a llegar.
+
 Los dos lados escriben con `.parcial` y renombrado atómico cuando reescriben, y en modo «añadir
 una línea entera» cuando añaden. Los dos ficheros que publica CATALOGADOR (`estado`, `fichas`) solo
 crecen: su cabecera lleva `filas: 0` desde que se estrena y el lector no se fía de esa cifra. Las

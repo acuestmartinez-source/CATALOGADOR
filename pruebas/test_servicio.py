@@ -171,3 +171,22 @@ def test_motivo_sin_detalles():
     assert "intercambio" in servicio.motivo_sin_detalles(OSError(13, "Permission denied", r"\nas\x"))
     assert "API" in servicio.motivo_sin_detalles(type("APIConnectionError", (Exception,), {})())
     assert servicio.motivo_sin_detalles(ValueError("x")) == "fallo del catalogador (ValueError); mira el registro del contenedor catalogador"
+
+
+def test_la_ficha_se_escribe_antes_que_su_lista_o_su_error(tmp_path, monkeypatch):
+    """Es contrato (LEEME, D-1167 del Gestor): el Gestor no paga dos veces apoyándose en este orden."""
+    inter, imagenes = _montar(tmp_path, monkeypatch)
+    shutil.rmtree(imagenes / "originales" / "TDP-008133")  # una termina en error y la otra en lista
+    orden = []
+    de_verdad = servicio.anadir
+
+    def apuntando(ruta, fila, formato):
+        orden.append((formato, fila.get("id_peticion"), fila.get("estado")))
+        de_verdad(ruta, fila, formato)
+
+    monkeypatch.setattr(servicio, "anadir", apuntando)
+    servicio.Servicio(inter, imagenes).vuelta()
+    for idp in ("idn-000001", "idn-000002"):
+        ficha = next(i for i, o in enumerate(orden) if o[:2] == ("fichas", idp))
+        final = next(i for i, o in enumerate(orden) if o[0] == "estado" and o[1] == idp and o[2] in ("lista", "error"))
+        assert ficha < final, (idp, orden)
