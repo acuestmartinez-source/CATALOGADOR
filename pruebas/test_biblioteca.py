@@ -417,6 +417,7 @@ def test_una_aceptada_mala_no_congela_la_biblioteca(tmp_path, monkeypatch, capsy
               con("idn-000002", "TDP-008133", [868, 640, 905, 720], [10, 10, 10, 10]),             # foto rota; degenerada
               con("idn-000003", "TDP-000003", [5000, 5000, 6000, 6000], [-50, -50, -10, -10]),     # fuera de 0-1000
               con("idn-000004", "TDP-000004", [False, 0, 900, 900], [0, 0, float("nan"), 900]),    # booleano; no finito
+              con("idn-000007", "TDP-000007", [0, 0, 10**400, 900], [0, 0, 900, 900]),             # entero gigante
               con("idn-000005", "TDP-000005", None, None, campos="texto"),                          # campos sin forma
               con("idn-000006", "TDP-000006", None, None, campos={"serie": ["x"]})]
     aceptadas.write_text("".join(json.dumps(x, ensure_ascii=False) + "\n" for x in (cabecera, *lineas)), encoding="utf-8")
@@ -425,17 +426,20 @@ def test_una_aceptada_mala_no_congela_la_biblioteca(tmp_path, monkeypatch, capsy
     for _ in range(3):
         s.vuelta()  # ninguna revienta
     publicadas = {(x["id_peticion"], x["tipo"]): x for x in _publicadas(inter)}
-    assert set(publicadas) == {(i, t) for i in ("idn-000001", "idn-000002", "idn-000003", "idn-000004") for t in ("firma", "sello")}
+    assert set(publicadas) == {(i, t) for i in ("idn-000001", "idn-000002", "idn-000003", "idn-000004", "idn-000007")
+                               for t in ("firma", "sello")}
     firma = publicadas[("idn-000001", "firma")]
     assert (firma["id_entrada"], firma["caja"], firma["estado"]) == (FIRMA, [868, 640, 905, 720], "retirada")
     assert firma["recorte"] == f"biblioteca/{FIRMA}.jpg"  # la caja con decimales no se pierde
+    assert all(type(v) is int for v in firma["caja"])  # y queda en enteros, también en la tabla
+    assert all(type(v) is int for v in next(f for f in biblioteca.leer("firma", True) if f["id_entrada"] == FIRMA)["caja"])
     for clave in (("idn-000001", "sello"), ("idn-000002", "sello"), ("idn-000003", "firma"), ("idn-000003", "sello"),
-                  ("idn-000004", "firma"), ("idn-000004", "sello")):
+                  ("idn-000004", "firma"), ("idn-000004", "sello"), ("idn-000007", "firma")):
         assert publicadas[clave]["caja"] is None and publicadas[clave]["recorte"] is None, clave
     assert publicadas[("idn-000002", "firma")]["caja"] == [868, 640, 905, 720]
     assert publicadas[("idn-000002", "firma")]["recorte"] is None  # la foto rota: entra sin recorte
     oro = [json.loads(x)["id_peticion"] for x in biblioteca.ORO.read_text(encoding="utf-8").splitlines()]
-    assert oro == ["idn-000001", "idn-000002", "idn-000003", "idn-000004"]  # los `campos` sin forma no dejan oro
+    assert oro == ["idn-000001", "idn-000002", "idn-000003", "idn-000004", "idn-000007"]  # `campos` sin forma: sin oro
     salida = capsys.readouterr().out
     assert "biblioteca: un recorte que no se pudo hacer" in salida and rota.name not in salida and "IMAGENES" not in salida
 
@@ -447,6 +451,14 @@ def test_una_linea_de_aceptadas_que_falla_no_tumba_la_vuelta(tmp_path, monkeypat
     def falla(a, foto):
         raise ValueError("un dato raro en /ruta/secreta")
 
+    # validar y limpiar también van dentro del try de la línea
+    valida = servicio.aceptada_valida
+    monkeypatch.setattr(servicio, "aceptada_valida", lambda a: 1 / 0)
+    servicio.Servicio(inter, imagenes).vuelta()  # no revienta
+    assert clave in servicio.leer_hecho()["aceptadas"]
+    assert "aceptadas: una línea que no se pudo aprender (ZeroDivisionError); se da por hecha" in capsys.readouterr().out
+    monkeypatch.setattr(servicio, "aceptada_valida", valida)
+    (tmp_path / "servicio.json").unlink()
     monkeypatch.setattr(biblioteca, "desde_aceptada", falla)
     servicio.Servicio(inter, imagenes).vuelta()  # no revienta
     assert clave in servicio.leer_hecho()["aceptadas"]  # se da por hecha
@@ -505,7 +517,9 @@ def test_la_cola_sin_fiarse(tmp_path, monkeypatch, capsys):
     malas = [{**buena, "id_peticion": "../../fuera-id"},
              {**buena, "id_peticion": "idn-000007", "referencia": "../../fuera-ref"},
              {**buena, "id_peticion": "idn-000008", "referencia": "TDP-000008", "imagenes": ["../secreta.jpg"]},
-             {**buena, "id_peticion": "idn-000009", "referencia": "TDP-000009", "grupo": ["x"]}]
+             {**buena, "id_peticion": "idn-000009", "referencia": "TDP-000009", "grupo": ["x"]},
+             *({**buena, "id_peticion": f"idn-00001{i}", "referencia": f"TDP-00001{i}", "imagenes": [ruta]}  # rutas absolutas
+               for i, ruta in enumerate((r"C:\Windows\x.jpg", "/etc/x.jpg", r"\\servidor\comparte\x.jpg")))]
     cola.write_text("".join(json.dumps(x, ensure_ascii=False) + "\n" for x in (cabecera, *malas, buena)), encoding="utf-8")
     aceptadas = inter / "para_catalogador" / "aceptadas.jsonl"
     aceptada = servicio.leer_jsonl(aceptadas)[0]
@@ -517,8 +531,36 @@ def test_la_cola_sin_fiarse(tmp_path, monkeypatch, capsys):
     assert [f["id_peticion"] for f in servicio.leer_jsonl(inter / "de_catalogador" / "fichas.jsonl")] == ["idn-000001"]
     assert not list(tmp_path.rglob("*fuera*"))  # ni la foto anotada ni el resultado salen de su carpeta
     salida = capsys.readouterr().out
-    assert salida.count("cola: una petición con el id, la referencia o una imagen fuera del contrato; se salta") == 4
+    assert salida.count("cola: una petición con el id, la referencia o una imagen fuera del contrato; se salta") == 7
     assert "../" not in salida and "secreta" not in salida  # el aviso es fijo
     assert {"../../fuera-id", "idn-000007", "idn-000008", "idn-000009"} <= set(servicio.leer_hecho()["peticiones"])
     servicio.Servicio(inter, imagenes).vuelta()
     assert "se salta" not in capsys.readouterr().out  # se dio por hecha: no se avisa en cada vuelta
+
+
+def test_una_lectura_que_no_es_texto_no_rompe_la_busqueda(tmp_path, monkeypatch, capsys):
+    inter, imagenes = _montar(tmp_path, monkeypatch)
+    _sin_buscar_fuera(monkeypatch)
+    aceptadas = inter / "para_catalogador" / "aceptadas.jsonl"
+    cabecera, buena = json.loads(aceptadas.read_text(encoding="utf-8").splitlines()[0]), servicio.leer_jsonl(aceptadas)[0]
+    numero = {**buena, "id_peticion": "idn-000002", "referencia": "TDP-008133",
+              "firma_confirmada": {**buena["firma_confirmada"], "lectura": 123}}
+    lista = {**buena, "id_peticion": "idn-000003", "referencia": "TDP-000003",
+             "sellos_confirmados": [{**buena["sellos_confirmados"][0], "lectura": ["越"]}]}
+    aceptadas.write_text("".join(json.dumps(x, ensure_ascii=False) + "\n" for x in (cabecera, numero, lista, buena)),
+                         encoding="utf-8")
+    servicio.Servicio(inter, imagenes).vuelta()
+    assert [f["id_peticion"] for t in ("firma", "sello") for f in biblioteca.leer(t)] == ["idn-000001", "idn-000001"]
+    assert capsys.readouterr().out.count("aceptadas: una línea fuera del contrato; se salta") == 2
+    # y las filas viejas, de antes de esta validación, se saltan al buscar y no tumban la publicación
+    with biblioteca.TABLA["firma"].open("a", encoding="utf-8") as f:
+        f.write(json.dumps({"referencia": "TDP-000004", "lectura": 123, "nombre": "Viejo", "caja": None,
+                            "id_peticion": "idn-000004", "recorte": None}) + "\n")
+    with biblioteca.TABLA["sello"].open("a", encoding="utf-8") as f:
+        f.write(json.dumps({"referencia": "TDP-000004", "lectura": ["越"], "nombre": 5, "caja": None,
+                            "id_peticion": "idn-000004", "recorte": None}) + "\n")
+    assert [f["referencia"] for f in biblioteca.buscar("firma", "國周画")] == ["TDP-008194"]
+    assert [f["referencia"] for f in biblioteca.buscar("sello", "越嘉")] == ["TDP-008194"]
+    assert json.loads(agente.ejecutar("buscar_firma", {"consulta": "國周画"}, []))["confirmadas_por_el_taller"][0]["referencia"] == "TDP-008194"
+    servicio.Servicio(inter, imagenes).vuelta()
+    assert len(_publicadas(inter)) == 4

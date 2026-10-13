@@ -88,7 +88,7 @@ def _filas(tipo: str) -> list[dict]:
 
 def _sin_prefijo(tipo: str, nombre: str | None) -> tuple[str | None, str | None]:
     """El sello se guarda como «editor: Nombre»; devuelve («editor», «Nombre»)."""
-    if tipo == "sello" and nombre and ": " in nombre:
+    if tipo == "sello" and isinstance(nombre, str) and ": " in nombre:
         tipo_sello, nombre = nombre.split(": ", 1)
         return tipo_sello, nombre
     return None, nombre
@@ -223,6 +223,8 @@ def buscar(tipo: str, consulta: str, limite: int = 6) -> list[dict]:
         return []
     salida = []
     for fila in filas:
+        if not (isinstance(fila.get("lectura"), str) and isinstance(fila.get("nombre"), str)):
+            continue  # una fila vieja con una lectura o un nombre que no son texto no tumba la búsqueda
         propios = _cjk(fila["lectura"])
         if not pedidos or not propios:
             continue

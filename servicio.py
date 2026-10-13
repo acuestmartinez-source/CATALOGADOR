@@ -22,7 +22,7 @@ import sys
 import threading
 import time
 from datetime import datetime, timezone
-from pathlib import Path, PurePath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import agente
 import biblioteca
@@ -124,10 +124,12 @@ REFERENCIA, PETICION = re.compile(r"TDP-[0-9]{6}"), re.compile(r"idn-[0-9]{6}")
 
 
 def caja_limpia(caja) -> list[int] | None:
-    """Una caja del Gestor, sin fiarse: cuatro números finitos que no sean booleanos, redondeados con `int()`,
-    con 0 <= x0 < x1 <= 1000 y 0 <= y0 < y1 <= 1000. Si no cumple, nula: la entrada va sin recorte."""
+    """Una caja del Gestor, sin fiarse: cuatro valores que son enteros (no booleanos) o flotantes finitos,
+    redondeados con `int()`, con 0 <= x0 < x1 <= 1000 y 0 <= y0 < y1 <= 1000 (eso descarta también un entero
+    gigante). Si no cumple, nula: la entrada va sin recorte."""
     if not (isinstance(caja, list) and len(caja) == 4
-            and all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in caja)):
+            and all((isinstance(v, int) and not isinstance(v, bool)) or (isinstance(v, float) and math.isfinite(v))
+                    for v in caja)):
         return None
     x0, y0, x1, y1 = (int(v) for v in caja)
     return [x0, y0, x1, y1] if 0 <= x0 < x1 <= 1000 and 0 <= y0 < y1 <= 1000 else None
@@ -135,11 +137,12 @@ def caja_limpia(caja) -> list[int] | None:
 
 def aceptada_valida(a: dict) -> bool:
     """Lo que llega en `aceptadas.jsonl`, sin fiarse, antes de escribir nada: la referencia es `TDP-` y seis
-    cifras, y la firma, los sellos, `campos` y `campos.serie` tienen su forma. Las cajas no tiran la línea:
-    las limpia `caja_limpia`."""
+    cifras; la firma y los sellos tienen su forma, con `lectura`, `nombre` y `tipo` de texto o nulos; y
+    `campos` y `campos.serie` son diccionarios. Las cajas no tiran la línea: las limpia `caja_limpia`."""
     firma, sellos, campos = a.get("firma_confirmada") or {}, a.get("sellos_confirmados") or [], a.get("campos") or {}
     return (isinstance(a.get("referencia"), str) and REFERENCIA.fullmatch(a["referencia"]) is not None
             and isinstance(firma, dict) and isinstance(sellos, list) and all(isinstance(s, dict) for s in sellos)
+            and all(x.get(k) is None or isinstance(x.get(k), str) for x in (firma, *sellos) for k in ("lectura", "nombre", "tipo"))
             and isinstance(campos, dict) and isinstance(campos.get("serie") or {}, dict))
 
 
@@ -151,7 +154,8 @@ def peticion_valida(p: dict) -> bool:
     return (isinstance(p.get("id_peticion"), str) and PETICION.fullmatch(p["id_peticion"]) is not None
             and isinstance(p.get("referencia"), str) and REFERENCIA.fullmatch(p["referencia"]) is not None
             and isinstance(p.get("grupo"), (str, type(None))) and isinstance(imagenes, list)
-            and all(isinstance(r, str) and not PurePath(r).anchor and ".." not in PurePath(r).parts for r in imagenes))
+            and all(isinstance(r, str) and all(not q.anchor and ".." not in q.parts  # ni C:\, ni /, ni \\servidor, ni ..
+                                               for q in (PureWindowsPath(r), PurePosixPath(r))) for r in imagenes))
 
 
 def _sin_fecha(texto: str) -> str | None:
@@ -291,38 +295,37 @@ class Servicio:
                 clave = f"{a.get('id_peticion')}:{a.get('aceptado_en')}"
                 if clave in hechas:
                     continue
-                if not aceptada_valida(a):  # el aviso es fijo: no repite lo que llegó
-                    print("aceptadas: una línea fuera del contrato; se salta", flush=True)
-                    if not self.en_seco:
-                        self.hecho["aceptadas"].append(clave)
-                        hechas.add(clave)
+                try:  # todo lo de una línea, también validar y limpiar las cajas, dentro de su try
+                    if self._aprender_una(a):
+                        n += 1
+                    else:
                         saltadas += 1
-                    continue
-                firma, sellos = a.get("firma_confirmada") or {}, a.get("sellos_confirmados") or []
-                if any(x.get("caja") is not None and caja_limpia(x.get("caja")) is None for x in (firma, *sellos)):
-                    print("aceptadas: una caja fuera del contrato; esa firma o ese sello van sin recorte", flush=True)
-                a = {**a, "firma_confirmada": firma and {**firma, "caja": caja_limpia(firma.get("caja"))},
-                     "sellos_confirmados": [{**s, "caja": caja_limpia(s.get("caja"))} for s in sellos]}
-                if self.en_seco:
-                    print(f"{a['referencia']}: se aprendería lo aceptado en {a.get('id_peticion')}", flush=True)
-                    n += 1
-                    continue
-                try:
-                    self._aprender_una(a)
-                    n += 1
                 except OSError:  # una tabla que no se lee: la vuelta falla y la siguiente lo repite
                     raise
                 except Exception as e:  # una línea de datos no tumba la vuelta: se avisa y se da por hecha
                     print(f"aceptadas: una línea que no se pudo aprender ({type(e).__name__}); se da por hecha", flush=True)
                     saltadas += 1
-                self.hecho["aceptadas"].append(clave)
-                hechas.add(clave)
+                if not self.en_seco:
+                    self.hecho["aceptadas"].append(clave)
+                    hechas.add(clave)
         finally:
             if (n or saltadas) and not self.en_seco:
                 guardar_hecho(self.hecho)
         return n
 
-    def _aprender_una(self, a: dict) -> None:
+    def _aprender_una(self, a: dict) -> bool:
+        """Una línea de `aceptadas.jsonl`. Devuelve False si no cumple el contrato y se salta."""
+        if not aceptada_valida(a):  # el aviso es fijo: no repite lo que llegó
+            print("aceptadas: una línea fuera del contrato; se salta", flush=True)
+            return False
+        firma, sellos = a.get("firma_confirmada") or {}, a.get("sellos_confirmados") or []
+        if any(x.get("caja") is not None and caja_limpia(x.get("caja")) is None for x in (firma, *sellos)):
+            print("aceptadas: una caja fuera del contrato; esa firma o ese sello van sin recorte", flush=True)
+        a = {**a, "firma_confirmada": firma and {**firma, "caja": caja_limpia(firma.get("caja"))},
+             "sellos_confirmados": [{**s, "caja": caja_limpia(s.get("caja"))} for s in sellos]}
+        if self.en_seco:
+            print(f"{a['referencia']}: se aprendería lo aceptado en {a.get('id_peticion')}", flush=True)
+            return True
         p = self.pedido(a.get("id_peticion")) or {}
         foto = next((self.imagenes / r for r in (p.get("imagenes") if peticion_valida(p) else None) or []
                      if (self.imagenes / r).exists()), None)
@@ -332,6 +335,7 @@ class Servicio:
             F.recordar_serie(MEMORIA, {"serie": {"japones": serie.get("valor"), "castellano": serie.get("valor"),
                                                  "nivel": "museo misma estampa", "confianza": "alta"}},
                              a["referencia"])
+        return True
 
     def corregir_biblioteca(self) -> int:
         """Lo que una persona pidió en el Gestor con una entrada de la biblioteca: cada `id_correccion`
