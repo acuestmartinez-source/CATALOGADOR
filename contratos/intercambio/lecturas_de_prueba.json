@@ -1,0 +1,37 @@
+{
+ "regla": "D-1221: lectura de 1 a 40 caracteres sin los espacios de los bordes, con al menos una letra de categoría Unicode Lo por encima de U+2E80 tras NFKC y la tabla de kanji antiguos, o con □; nombre de 1 a 120 caracteres sin los espacios de los bordes; corregir trae lectura, nombre o los dos.",
+ "lecturas_validas": [
+  "國周画",
+  "国周画",
+  "越嘉",
+  "広重",
+  "□□画",
+  "国周 (?)",
+  "  國周画  ",
+  "ｸﾆﾁｶ",
+  "□"
+ ],
+ "lecturas_invalidas": [
+  "",
+  "   ",
+  "々",
+  "〇〇",
+  "ー",
+  "・",
+  "ゝ",
+  "⺅",
+  "Kunichika",
+  "1862",
+  "国国国国国国国国国国国国国国国国国国国国国国国国国国国国国国国国国国国国国国国国国"
+ ],
+ "nombres_validos": [
+  "Toyohara Kunichika I",
+  "國周",
+  "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+ ],
+ "nombres_invalidos": [
+  "",
+  "   ",
+  "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+ ]
+}
