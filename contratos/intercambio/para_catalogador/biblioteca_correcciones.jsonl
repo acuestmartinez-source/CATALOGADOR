@@ -1,0 +1,3 @@
+{"formato": "biblioteca_correcciones", "version": 1, "escrito_por": "identificacion", "escrito_en": "2026-10-13T08:55:00Z", "filas": 2}
+{"id_correccion": "bic-000001", "id_entrada": "bib-63e2dab61519", "accion": "corregir", "lectura": null, "nombre": "Toyohara Kunichika I", "pedido_en": "2026-10-13T08:50:00Z"}
+{"id_correccion": "bic-000002", "id_entrada": "bib-bfe4de1b0901", "accion": "retirar", "lectura": null, "nombre": null, "pedido_en": "2026-10-13T08:55:00Z"}
