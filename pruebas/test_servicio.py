@@ -22,6 +22,7 @@ def _montar(tmp_path, monkeypatch):
     (inter / "de_catalogador").mkdir(exist_ok=True)
     for f in (inter / "de_catalogador").glob("*.jsonl"):
         f.unlink()
+    (inter / "para_catalogador" / "biblioteca_correcciones.jsonl").unlink()  # cada prueba pone las suyas
     imagenes = tmp_path / "IMAGENES"
     for p in servicio.leer_jsonl(inter / "para_catalogador" / "cola.jsonl"):
         for r in p["imagenes"]:
@@ -30,10 +31,12 @@ def _montar(tmp_path, monkeypatch):
     monkeypatch.setattr(servicio, "HECHO", tmp_path / "servicio.json")
     monkeypatch.setattr(servicio, "MEMORIA", tmp_path / "series.json")
     monkeypatch.setattr(servicio, "RAIZ", tmp_path)
-    monkeypatch.setattr(biblioteca, "CARPETA", tmp_path / "biblioteca")
-    monkeypatch.setattr(biblioteca, "TABLA", {"firma": tmp_path / "biblioteca" / "firmas.jsonl", "sello": tmp_path / "biblioteca" / "sellos.jsonl"})
-    monkeypatch.setattr(biblioteca, "RECORTES", tmp_path / "biblioteca" / "recortes")
-    monkeypatch.setattr(biblioteca, "ORO", tmp_path / "biblioteca" / "oro.jsonl")
+    bib = tmp_path / "datos" / "biblioteca"
+    monkeypatch.setattr(biblioteca, "CARPETA", bib)
+    monkeypatch.setattr(biblioteca, "TABLA", {"firma": bib / "firmas.jsonl", "sello": bib / "sellos.jsonl"})
+    monkeypatch.setattr(biblioteca, "RECORTES", bib / "recortes")
+    monkeypatch.setattr(biblioteca, "ORO", bib / "oro.jsonl")
+    monkeypatch.setattr(biblioteca, "CORRECCIONES", bib / "correcciones.jsonl")
     monkeypatch.setattr(biblioteca, "RAIZ", tmp_path)
     monkeypatch.setattr(agente, "ocr_ndl", lambda foto: [{"caja": [0, 0, 1, 1], "texto": "葉うた虎之巻", "confianza": 0.7}])
     monkeypatch.setattr(agente, "cliente", lambda: object())
@@ -134,6 +137,7 @@ def test_datar_censor():
 def test_la_herramienta_del_agente_junta_lo_propio_y_lo_documentado(tmp_path, monkeypatch):
     monkeypatch.setattr(biblioteca, "TABLA", {"firma": tmp_path / "f.jsonl", "sello": tmp_path / "s.jsonl"})
     monkeypatch.setattr(biblioteca, "RECORTES", tmp_path / "r")
+    monkeypatch.setattr(biblioteca, "CORRECCIONES", tmp_path / "c.jsonl")
     biblioteca.anotar("sello", "TDP-1", "越嘉", "editor: Echizenya Kajū", None, None)
     salida = json.loads(agente.ejecutar("buscar_sello_editor", {"consulta": "越嘉"}, []))
     assert salida["confirmadas_por_el_taller"][0]["referencia"] == "TDP-1"

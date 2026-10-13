@@ -46,6 +46,19 @@ def ampliar_imagen(im: Image.Image, lado: int = LADO_AMPLIACION) -> Image.Image:
     return im
 
 
+def miniatura(ruta: Path, lado: int = 480, tope: int = 80_000) -> bytes:
+    """JPEG con el lado mayor de `lado` px como mucho y de menos de `tope` bytes: si no cabe, baja la calidad."""
+    with Image.open(ruta) as im:
+        im = im.convert("RGB")
+    im.thumbnail((lado, lado))
+    for calidad in range(85, 4, -10):
+        buf = BytesIO()
+        im.save(buf, "JPEG", quality=calidad)
+        if buf.tell() < tope:
+            break
+    return buf.getvalue()
+
+
 def mejorar(im: Image.Image, mejora: str) -> Image.Image:
     """Una de MEJORAS. Todas devuelven RGB para que el OCR y el modelo las lean igual."""
     if mejora == "ninguna":

@@ -20,12 +20,15 @@ flowchart LR
         E["Pantalla de revisión<br/>foto con recuadros · seis datos<br/>cómo · fuente · fiabilidad"] -->|"acepta o corrige, campo a campo"| N
         N["nucleo.api.editar_obra<br/>+ idn_procedencia"] --> W["WEB publica por el puente"]
         E -->|"escribe"| C2
+        H["Biblioteca de firmas y sellos<br/>hojear · corregir · retirar · restaurar"] -->|"escribe"| C6
     end
     subgraph Intercambio["_intercambio (solo ficheros)"]
         C1["para_catalogador/cola.jsonl"]
         C2["para_catalogador/aceptadas.jsonl"]
         C3["de_catalogador/estado.jsonl"]
         C4["de_catalogador/fichas.jsonl"]
+        C5["de_catalogador/biblioteca.jsonl<br/>+ biblioteca/&lt;id&gt;.jpg"]
+        C6["para_catalogador/biblioteca_correcciones.jsonl"]
     end
     subgraph Cat["CATALOGADOR (NAS, contenedor catalogador)"]
         S["servicio.py<br/>vigila la cola, 06:00–13:00"] --> A["agente v4<br/>OCR · lupa · firmas · sellos<br/>censor · ukiyo-e.org · (web)"]
@@ -33,19 +36,22 @@ flowchart LR
         S --> C3
         C2 --> L[("biblioteca propia<br/>firmas · sellos · oro<br/>memoria de series")]
         L --> A
+        L -->|"publica si cambia"| C5
     end
     C1 --> S
     C3 -->|"la pantalla se refresca"| E
     C4 --> E
+    C5 --> H
+    C6 -->|"corregir · retirar · restaurar"| L
 ```
 
 ## Lo que ya está construido en CATALOGADOR (este repositorio)
 
 | Pieza | Fichero | Estado |
 |---|---|---|
-| Contrato de intercambio: `cola`, `aceptadas`, `estado`, `fichas`, con ejemplos | `contratos/intercambio/` | Hecho; copiado idéntico al Gestor. |
+| Contrato de intercambio: `cola`, `aceptadas` y `biblioteca_correcciones` (del Gestor); `estado`, `fichas`, `anotadas/`, `biblioteca` y `biblioteca/` (de CATALOGADOR); con ejemplos y la lista común de lecturas de prueba (`lecturas_de_prueba.json`, D-1221) | `contratos/intercambio/` | Hecho; copiado idéntico al Gestor. |
 | Modo servicio: vigila la cola, agrupa, escribe estado y fichas, aprende de lo aceptado, hora límite, idempotente | `servicio.py` | Hecho y probado con un doble del agente (sin API). |
-| Biblioteca propia: firmas y sellos confirmados con recorte; conjunto de oro | `biblioteca.py` | Hecho. El agente la consulta antes que las bases de ukiyoesig.net. |
+| Biblioteca propia: firmas y sellos confirmados con recorte, cada entrada con su id estable; las correcciones del Gestor; la instantánea publicada; conjunto de oro | `biblioteca.py`, `servicio.py` | Hecho. El agente la consulta antes que las bases de ukiyoesig.net, y solo ve lo vigente. Detalle en [`08_biblioteca.md`](08_biblioteca.md). |
 | Datación por censor como código | `censor.py`, herramienta `datar_censor` | Hecho. |
 | Contenedor para el NAS, con el OCR dentro y la clave como secreto | `Dockerfile`, `docker-compose.yml` | Escrito, **sin probar**: en el PC no hay Docker. Se construye en el Container Manager del NAS. |
 
@@ -53,10 +59,11 @@ Lo que una persona acepta en el Gestor vuelve por `aceptadas.jsonl` y alimenta t
 biblioteca propia (firma y sellos con su recorte), la memoria de series y el conjunto de oro con el
 que se mide el error real.
 
-## Lo que queda por construir en el Gestor (por su proceso de etapas, con PARADA)
+## El lado del Gestor (por su proceso de etapas, con PARADA)
 
-Módulo nuevo **IDENTIFICACION** (`idn_`), que depende de NÚCLEO. Tres tablas y seis rutas, dentro
-del cupo general; no toca el cupo del NÚCLEO. Plan detallado en `docs/PLAN_IDENTIFICACION.md` del Gestor.
+Módulo **IDENTIFICACION** (`idn_`), que depende de NÚCLEO, dentro del cupo general; no toca el cupo
+del NÚCLEO. Las etapas 1 a 3 están fusionadas en el Gestor; la 4, la biblioteca, se construye a la vez
+que el lado de CATALOGADOR (13/10/2026). Plan detallado en `docs/PLAN_IDENTIFICACION.md` del Gestor.
 
 | Etapa | Qué | Tablas y rutas |
 |---|---|---|
@@ -64,6 +71,7 @@ del cupo general; no toca el cupo del NÚCLEO. Plan detallado en `docs/PLAN_IDEN
 | 1 | Pedir: botón en `ficha_obra.acciones`, `rejilla_obras.acciones_seleccion` y ficha de grupo; `idn_peticion`; escribe `cola.jsonl`; lee `estado.jsonl` y pinta el estado | 1 tabla, 2 rutas |
 | 2 | Revisar: lee `fichas.jsonl` a `idn_propuesta`; pantalla con la foto y los recuadros, los seis datos con su cómo, fuente y fiabilidad; aceptar o corregir campo a campo; `idn_procedencia`; escribe en la obra por `editar_obra` y en `aceptadas.jsonl` | 2 tablas, 3 rutas |
 | 3 | Publicar: los campos aceptados entran en la lista de WEB; `/salud` dice si se ve `de_catalogador` y de cuándo es la última ficha | 1 ruta |
+| 4 | Biblioteca: `/identificacion/biblioteca` enseña lo que CATALOGADOR publica en `biblioteca.jsonl`, con su recorte; con `identificacion.biblioteca`, pedir la corrección, retirar o restaurar, que reescribe `biblioteca_correcciones.jsonl` (sin quién ni motivo) | 1 tabla, 2 rutas |
 
 ## La base propia de firmas, sellos, editores y censores
 
@@ -74,7 +82,7 @@ tabla de censores como código. La casa quiere la suya. Lo que falta, por orden:
 2. **Cotejo por imagen, no solo por texto.** Comparar el recorte de un sello con los recortes guardados y con las imágenes de los 4.020 sellos de ukiyoesig.net. Hace falta descargar esas imágenes una vez, despacio, y un índice visual local (DINOv2 u ORB, en CPU). Resuelve los sellos que no se leen. Es una etapa de CATALOGADOR.
 3. **Censores con imagen.** Una tabla de los sellos de censor con su imagen (los nanushi de 1842–1853 y los aratame), para que la lupa coteje la forma y no solo el carácter.
 4. **Editores con sus datos.** Para cada editor confirmado, nombre, kanji, lugar, años, sus sellos documentados y las obras del taller donde aparece. Sale de la biblioteca cruzada con ukiyoesig.net y con las fichas de museos que ya cita el agente.
-5. **Una pantalla en el Gestor** para hojear y corregir la biblioteca (etapa 4 de IDENTIFICACION, cuando las tres primeras estén en uso).
+5. **Una pantalla en el Gestor** para hojear y corregir la biblioteca (etapa 4 de IDENTIFICACION). Construida a la vez en los dos lados: el Gestor enseña y pide; CATALOGADOR da a cada entrada su id estable, aplica lo pedido sin borrar nada y publica la biblioteca. Cómo, en [`08_biblioteca.md`](08_biblioteca.md).
 
 ## Dónde corre y a qué hora
 
