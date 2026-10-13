@@ -270,7 +270,7 @@ def desde_aceptada(aceptada: dict, foto: Path | None) -> dict:
         with ORO.open("a", encoding="utf-8") as f:
             f.write(json.dumps({"referencia": ref, "id_peticion": idp, "aceptado_por": quien,
                                 "aceptado_en": aceptada.get("aceptado_en") or _ahora(),
-                                "campos": aceptada.get("campos") or {}}, ensure_ascii=False) + "\n")
+                                "campos": aceptada.get("campos") or {}}, ensure_ascii=True) + "\n")
     return hecho
 
 

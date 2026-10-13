@@ -711,3 +711,12 @@ def test_la_memoria_de_series_no_se_pierde_si_escribir_falla(tmp_path):
     with pytest.raises(UnicodeEncodeError):  # una serie con un sustituto suelto no se puede escribir en UTF-8
         F.recordar_serie(memoria, serie("広重國周画\ud800"), "TDP-000001")
     assert [m["serie"]["japones"] for m in F.leer_memoria(memoria)] == ["葉うた虎之巻"]  # la de antes sigue entera
+
+
+def test_un_sustituto_suelto_no_pierde_la_linea_del_oro(tmp_path, monkeypatch):
+    """La línea del oro se escribe en ASCII: un «\ud800» que llegue en lo aceptado no la pierde."""
+    monkeypatch.setattr(biblioteca, "ORO", tmp_path / "oro.jsonl")
+    biblioteca.desde_aceptada({"referencia": "TDP-000001", "id_peticion": "idn-000001", "aceptado_por": "ana\ud800",
+                               "aceptado_en": "2026-10-13T10:00:00Z", "campos": {"titulo": {"valor": "x\ud800"}}}, None)
+    linea = (tmp_path / "oro.jsonl").read_text(encoding="utf-8").strip()
+    assert linea and all(ord(c) < 128 for c in linea)

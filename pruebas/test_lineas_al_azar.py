@@ -43,7 +43,8 @@ def _mutada(rnd, buena: dict) -> dict:
         clave = rnd.choice([*linea, "firma_confirmada", "sellos_confirmados", "otra"])
         if clave == "firma_confirmada" and isinstance(linea.get(clave), dict) and rnd.random() < 0.7:
             linea[clave][rnd.choice(["lectura", "nombre", "caja", "tipo"])] = _raro(rnd)
-        elif clave == "sellos_confirmados" and isinstance(linea.get(clave), list) and linea[clave] and rnd.random() < 0.7:
+        elif (clave == "sellos_confirmados" and isinstance(linea.get(clave), list) and linea[clave]
+              and isinstance(linea[clave][0], dict) and rnd.random() < 0.7):
             linea[clave][0][rnd.choice(["lectura", "nombre", "caja", "tipo"])] = _raro(rnd)
         else:
             linea[clave] = _raro(rnd)
