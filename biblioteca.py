@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sys
 import threading
 import unicodedata
@@ -30,6 +31,7 @@ RECORTES = CARPETA / "recortes"
 ORO = CARPETA / "oro.jsonl"  # las fichas adjudicadas por una persona: el conjunto con el que se mide
 CORRECCIONES = CARPETA / "correcciones.jsonl"  # lo aplicado de lo que pidió el Gestor; solo crece
 ACCIONES = ("corregir", "retirar", "restaurar")
+ID_CORRECCION, ID_ENTRADA = re.compile(r"bic-[0-9]{6}"), re.compile(r"bib-[0-9a-f]{12}")
 LARGO_LECTURA, LARGO_NOMBRE = 40, 120
 _cerrojo = threading.Lock()
 
@@ -56,7 +58,7 @@ def _jsonl(ruta: Path) -> list[dict]:
     for linea in lineas:
         try:
             fila = json.loads(linea)
-        except ValueError:  # también UnicodeDecodeError
+        except (ValueError, RecursionError):  # también UnicodeDecodeError, y una línea anidada sin fondo
             continue
         if isinstance(fila, dict):
             filas.append(fila)
@@ -71,14 +73,17 @@ def _anadir(ruta: Path, fila: dict) -> None:
             f.seek(-1, 2)
             if f.read(1) != b"\n":
                 f.write(b"\n")
-        f.write((json.dumps(fila, ensure_ascii=False) + "\n").encode("utf-8"))
+        f.write((json.dumps(fila, ensure_ascii=True) + "\n").encode("ascii"))  # ni un sustituto suelto la rompe
 
 
 def identidad(tipo: str, fila: dict) -> str:
     """`bib-` y doce cifras del SHA-1 de `tipo|id_peticion|referencia|x0,y0,x1,y1` (el contrato)."""
-    caja = ",".join(str(int(v)) for v in fila.get("caja") or [])
+    try:
+        caja = ",".join(str(int(v)) for v in fila.get("caja") or [])
+    except (TypeError, ValueError, OverflowError):  # una caja vieja que no son números cuenta como nula
+        caja = ""
     clave = f"{tipo}|{fila.get('id_peticion') or ''}|{fila.get('referencia') or ''}|{caja}"
-    return "bib-" + hashlib.sha1(clave.encode("utf-8")).hexdigest()[:12]
+    return "bib-" + hashlib.sha1(clave.encode("utf-8", "surrogatepass")).hexdigest()[:12]
 
 
 def _filas(tipo: str) -> list[dict]:
@@ -87,7 +92,8 @@ def _filas(tipo: str) -> list[dict]:
 
 
 def _sin_prefijo(tipo: str, nombre: str | None) -> tuple[str | None, str | None]:
-    """El sello se guarda como «editor: Nombre»; devuelve («editor», «Nombre»)."""
+    """El sello se guarda como «editor: Nombre» (o «: Nombre» si no se sabe qué sello); devuelve («editor»,
+    «Nombre») o («», «Nombre»)."""
     if tipo == "sello" and isinstance(nombre, str) and ": " in nombre:
         tipo_sello, nombre = nombre.split(": ", 1)
         return tipo_sello, nombre
@@ -161,7 +167,8 @@ def aplicar(correccion: dict) -> bool:
     c = correccion if isinstance(correccion, dict) else {}
     idc, ide, accion = c.get("id_correccion"), c.get("id_entrada"), c.get("accion")
     lectura, nombre = (c.get("lectura"), c.get("nombre")) if accion == "corregir" else (None, None)
-    if not (isinstance(idc, str) and idc and isinstance(ide, str) and accion in ACCIONES):
+    if not (isinstance(idc, str) and ID_CORRECCION.fullmatch(idc) and isinstance(ide, str) and ID_ENTRADA.fullmatch(ide)
+            and accion in ACCIONES):
         print("biblioteca: una corrección sin forma válida; se ignora", flush=True)
         return False
     if accion == "corregir" and not ((lectura is not None or nombre is not None)
@@ -178,7 +185,7 @@ def aplicar(correccion: dict) -> bool:
             return False
         lectura, nombre = lectura and lectura.strip(), nombre and nombre.strip()
         tipo_sello = _sin_prefijo(tipo, fila["nombre"])[0]
-        if nombre and tipo_sello:
+        if nombre and tipo_sello is not None:
             nombre = f"{tipo_sello}: {nombre}"
         _anadir(CORRECCIONES, {"id_correccion": idc, "id_entrada": ide, "accion": accion, "lectura": lectura,
                                "nombre": nombre, "aplicada_en": _ahora()})
@@ -204,7 +211,7 @@ def entradas() -> list[dict]:
             tipo_sello, nombre = _sin_prefijo(tipo, f["nombre"])
             original = f["original"] and {"lectura": f["original"]["lectura"],
                                           "nombre": _sin_prefijo(tipo, f["original"]["nombre"])[1]}
-            salida.append({"id_entrada": f["id_entrada"], "tipo": tipo, "tipo_sello": tipo_sello,
+            salida.append({"id_entrada": f["id_entrada"], "tipo": tipo, "tipo_sello": tipo_sello or None,
                            "referencia": f.get("referencia"), "id_peticion": f.get("id_peticion") or None,
                            "lectura": f.get("lectura"), "nombre": nombre, "caja": f.get("caja"),
                            "recorte": f"biblioteca/{f['id_entrada']}.jpg" if _recorte_propio(f) else None,
@@ -254,7 +261,8 @@ def desde_aceptada(aceptada: dict, foto: Path | None) -> dict:
         hecho["firma"] = 1
     for s in aceptada.get("sellos_confirmados") or []:
         if s.get("lectura") and s.get("nombre"):
-            anotar("sello", ref, s["lectura"], f"{s.get('tipo', 'sello')}: {s['nombre']}", s.get("caja"), foto, quien, idp,
+            tipo = s.get("tipo") if isinstance(s.get("tipo"), str) else ""  # sin tipo: se publica nulo
+            anotar("sello", ref, s["lectura"], f"{tipo}: {s['nombre']}", s.get("caja"), foto, quien, idp,
                    aceptada.get("aceptado_en") or "")
             hecho["sellos"] += 1
     with _cerrojo:

@@ -154,7 +154,9 @@ def recordar_serie(ruta: Path, ficha: dict | None, referencia: str) -> dict | No
         else:
             memoria.append(entrada)
         ruta.parent.mkdir(parents=True, exist_ok=True)
-        ruta.write_text(json.dumps(memoria, ensure_ascii=False, indent=1), encoding="utf-8")
+        parcial = ruta.with_suffix(".parcial")  # si escribir falla, la memoria de antes sigue entera
+        parcial.write_text(json.dumps(memoria, ensure_ascii=False, indent=1), encoding="utf-8")
+        parcial.replace(ruta)
     return entrada
 
 

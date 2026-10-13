@@ -1,5 +1,6 @@
 """La biblioteca propia: identidad estable, correcciones del Gestor y la instantánea publicada.
 Sin API: el agente se sustituye por un doble (el `_montar` de test_servicio)."""
+import errno
 import itertools
 import json
 import pathlib
@@ -25,11 +26,11 @@ FIRMA, SELLO = "bib-63e2dab61519", "bib-bfe4de1b0901"
 
 
 def _correcciones(inter, *filas):
-    """El Gestor reescribe el fichero entero, con su cabecera."""
+    """El Gestor reescribe el fichero entero, con su cabecera, en ASCII."""
     cabecera = {"formato": "biblioteca_correcciones", "version": 1, "escrito_por": "identificacion",
                 "escrito_en": "2026-10-13T08:55:00Z", "filas": len(filas)}
     (inter / "para_catalogador" / "biblioteca_correcciones.jsonl").write_text(
-        "".join(json.dumps(x, ensure_ascii=False) + "\n" for x in (cabecera, *filas)), encoding="utf-8")
+        "".join(json.dumps(x, ensure_ascii=True) + "\n" for x in (cabecera, *filas)), encoding="utf-8")
 
 
 def _c(n, entrada, accion, lectura=None, nombre=None):
@@ -525,7 +526,8 @@ def test_la_cola_sin_fiarse(tmp_path, monkeypatch, capsys):
     aceptada = servicio.leer_jsonl(aceptadas)[0]
     with aceptadas.open("a", encoding="utf-8") as f:  # lo aceptado de la petición con la imagen de fuera
         f.write(json.dumps({**aceptada, "id_peticion": "idn-000008", "referencia": "TDP-000008"}, ensure_ascii=False) + "\n")
-    servicio.Servicio(inter, imagenes).vuelta()
+    s = servicio.Servicio(inter, imagenes)
+    s.vuelta()
     recortes = {f["id_peticion"]: f["recorte"] for f in biblioteca.leer("firma")}
     assert recortes["idn-000008"] is None and recortes["idn-000001"]  # no recorta una foto de fuera del almacén
     assert [f["id_peticion"] for f in servicio.leer_jsonl(inter / "de_catalogador" / "fichas.jsonl")] == ["idn-000001"]
@@ -533,9 +535,10 @@ def test_la_cola_sin_fiarse(tmp_path, monkeypatch, capsys):
     salida = capsys.readouterr().out
     assert salida.count("cola: una petición con el id, la referencia o una imagen fuera del contrato; se salta") == 7
     assert "../" not in salida and "secreta" not in salida  # el aviso es fijo
-    assert {"../../fuera-id", "idn-000007", "idn-000008", "idn-000009"} <= set(servicio.leer_hecho()["peticiones"])
-    servicio.Servicio(inter, imagenes).vuelta()
-    assert "se salta" not in capsys.readouterr().out  # se dio por hecha: no se avisa en cada vuelta
+    hechas = set(servicio.leer_hecho()["peticiones"])
+    assert {"idn-000007", "idn-000008", "idn-000009"} <= hechas and "../../fuera-id" not in hechas  # sin patrón, no se apunta
+    s.vuelta()
+    assert "se salta" not in capsys.readouterr().out  # ni se avisa en cada vuelta
 
 
 def test_una_lectura_que_no_es_texto_no_rompe_la_busqueda(tmp_path, monkeypatch, capsys):
@@ -564,3 +567,147 @@ def test_una_lectura_que_no_es_texto_no_rompe_la_busqueda(tmp_path, monkeypatch,
     assert json.loads(agente.ejecutar("buscar_firma", {"consulta": "國周画"}, []))["confirmadas_por_el_taller"][0]["referencia"] == "TDP-008194"
     servicio.Servicio(inter, imagenes).vuelta()
     assert len(_publicadas(inter)) == 4
+
+
+HONDA = "[" * 100000 + "]" * 100000  # JSON válido que json.loads no baja: RecursionError
+
+
+def _con_lineas(ruta, *lineas):
+    """Añade líneas tal cual (texto ya serializado) al final de un fichero del intercambio."""
+    with ruta.open("a", encoding="utf-8") as f:
+        f.write("".join(x + "\n" for x in lineas))
+
+
+def test_una_linea_anidada_sin_fondo_no_tumba_la_vuelta(tmp_path, monkeypatch):
+    inter, imagenes = _montar(tmp_path, monkeypatch)
+    _correcciones(inter, _c(1, FIRMA, "retirar"))
+    for nombre in ("cola", "aceptadas", "biblioteca_correcciones"):
+        _con_lineas(inter / "para_catalogador" / f"{nombre}.jsonl", HONDA)
+    servicio.Servicio(inter, imagenes).vuelta()
+    assert [f["id_peticion"] for f in servicio.leer_jsonl(inter / "de_catalogador" / "fichas.jsonl")] == ["idn-000001", "idn-000002"]
+    assert next(x for x in _publicadas(inter) if x["id_entrada"] == FIRMA)["estado"] == "retirada"
+    # y en los ficheros propios de la biblioteca
+    _con_lineas(biblioteca.TABLA["firma"], HONDA)
+    _con_lineas(biblioteca.CORRECCIONES, HONDA)
+    assert biblioteca.buscar("sello", "越嘉") and biblioteca.leer("firma", True)[0]["id_entrada"] == FIRMA
+    servicio.Servicio(inter, imagenes).vuelta()
+
+
+def test_un_sustituto_suelto_no_rompe_lo_hecho(tmp_path, monkeypatch, capsys):
+    inter, imagenes = _montar(tmp_path, monkeypatch)
+    cola, aceptadas = inter / "para_catalogador" / "cola.jsonl", inter / "para_catalogador" / "aceptadas.jsonl"
+    p, a = servicio.leer_jsonl(cola)[0], servicio.leer_jsonl(aceptadas)[0]
+    _con_lineas(cola, json.dumps({**p, "id_peticion": "idn-00000\ud800"}))
+    _con_lineas(aceptadas, json.dumps({**a, "id_peticion": "idn-000002", "aceptado_en": "2026\ud800"}),
+                json.dumps({**a, "id_peticion": "idn-000003", "firma_confirmada": {**a["firma_confirmada"], "lectura": "國\ud800周"}}))
+    _correcciones(inter, {**_c(1, FIRMA, "retirar"), "id_correccion": "bic-\ud800"}, _c(2, SELLO, "corregir", None, "Echizen\ud800ya"))
+    s = servicio.Servicio(inter, imagenes)
+    s.vuelta()
+    s.vuelta()
+    texto = (tmp_path / "servicio.json").read_text(encoding="utf-8")
+    assert texto.isascii()
+    hecho = json.loads(texto)
+    assert hecho["peticiones"] == ["idn-000001", "idn-000002"] and hecho["correcciones"] == ["bic-000002"]
+    assert sorted(hecho["aceptadas"]) == ["idn-000001:2026-10-09T12:30:00Z", "idn-000003:2026-10-09T12:30:00Z"]
+    assert next(x for x in _publicadas(inter) if x["id_entrada"] == SELLO)["nombre"] == "Echizen\ud800ya"
+    salida = capsys.readouterr().out
+    for aviso in ("cola: una petición con el id, la referencia o una imagen fuera del contrato; se salta",
+                  "aceptadas: una línea sin un id o una fecha que apuntar; se salta",
+                  "biblioteca: una corrección sin un id_correccion que apuntar; se salta"):
+        assert salida.count(aviso) == 1, aviso  # un aviso por proceso, no uno por vuelta
+    # lo hecho se guarda en ASCII aunque traiga un sustituto, y aplicar no se fía de los ids
+    servicio.guardar_hecho({"peticiones": ["idn-00000\ud800"]})
+    assert servicio.leer_hecho() == {"peticiones": ["idn-00000\ud800"]}
+    assert biblioteca.aplicar({"id_correccion": "bic-\ud800", "id_entrada": FIRMA, "accion": "retirar"}) is False
+    assert biblioteca.aplicar({"id_correccion": "bic-000009", "id_entrada": "bib-\ud800", "accion": "retirar"}) is False
+    assert capsys.readouterr().out.count("biblioteca: una corrección sin forma válida; se ignora") == 2
+
+
+def test_un_nombre_de_fichero_demasiado_largo_no_tumba_la_vuelta(tmp_path, monkeypatch):
+    inter, imagenes = _montar(tmp_path, monkeypatch)
+    cola, aceptadas = inter / "para_catalogador" / "cola.jsonl", inter / "para_catalogador" / "aceptadas.jsonl"
+    p, a = servicio.leer_jsonl(cola)[0], servicio.leer_jsonl(aceptadas)[0]
+    _con_lineas(cola, json.dumps({**p, "id_peticion": "idn-000020", "referencia": "TDP-000020",
+                                  "imagenes": ["originales/" + "a" * 300 + ".jpg"]}))
+    _con_lineas(aceptadas, json.dumps({**a, "id_peticion": "idn-000002", "referencia": "TDP-008133"}))
+    de_verdad = pathlib.Path.exists
+
+    def como_en_el_nas(self, *args, **kw):  # Linux relanza ENAMETOOLONG; y una carpeta que no se deja mirar
+        if "TDP-008133" in self.parts or any(len(c.encode("utf-8")) > 255 for c in self.parts):
+            raise OSError(errno.ENAMETOOLONG, "File name too long")
+        return de_verdad(self, *args, **kw)
+
+    monkeypatch.setattr(pathlib.Path, "exists", como_en_el_nas)
+    servicio.Servicio(inter, imagenes).vuelta()
+    fichas = {f["id_peticion"]: f["error"] for f in servicio.leer_jsonl(inter / "de_catalogador" / "fichas.jsonl")}
+    assert fichas == {"idn-000001": None, "idn-000002": "sin fotos en el almacén"}  # la del nombre largo se salta
+    recortes = {f["id_peticion"]: f["recorte"] for f in biblioteca.leer("firma")}
+    assert recortes["idn-000002"] is None and recortes["idn-000001"]
+
+
+def test_una_fila_vieja_con_una_caja_que_no_son_numeros(tmp_path, monkeypatch):
+    inter, imagenes = _montar(tmp_path, monkeypatch)
+    servicio.Servicio(inter, imagenes).vuelta()
+    viejas = [{"referencia": "TDP-000030", "lectura": "國周画", "nombre": "Viejo", "caja": caja, "id_peticion": "idn-000030",
+               "recorte": None} for caja in (["x", 1, 2, 3], 7, "abc", [0, 0, float("inf"), 1])]
+    _con_lineas(biblioteca.TABLA["firma"], *(json.dumps(v) for v in viejas))
+    vacia = biblioteca.identidad("firma", {"referencia": "TDP-000030", "id_peticion": "idn-000030", "caja": None})
+    assert {f["id_entrada"] for f in biblioteca.leer("firma") if f["referencia"] == "TDP-000030"} == {vacia}  # cuentan como nula
+    assert biblioteca.buscar("firma", "國周画")
+    _correcciones(inter, _c(1, FIRMA, "retirar"))
+    servicio.Servicio(inter, imagenes).vuelta()  # corrige y publica
+    assert next(x for x in _publicadas(inter) if x["id_entrada"] == FIRMA)["estado"] == "retirada"
+
+
+def test_un_sello_sin_tipo_se_publica_con_tipo_nulo(tmp_path, monkeypatch):
+    inter, imagenes = _montar(tmp_path, monkeypatch)
+    aceptadas = inter / "para_catalogador" / "aceptadas.jsonl"
+    cabecera, a = json.loads(aceptadas.read_text(encoding="utf-8").splitlines()[0]), servicio.leer_jsonl(aceptadas)[0]
+    sello = a["sellos_confirmados"][0]
+    sin_tipo = {k: v for k, v in sello.items() if k != "tipo"}
+    a = {**a, "sellos_confirmados": [{**sello, "tipo": None}, {**sin_tipo, "caja": [100, 100, 200, 200]}]}
+    aceptadas.write_text("".join(json.dumps(x, ensure_ascii=False) + "\n" for x in (cabecera, a)), encoding="utf-8")
+    servicio.Servicio(inter, imagenes).vuelta()
+    sellos = [x for x in _publicadas(inter) if x["tipo"] == "sello"]
+    assert [(x["tipo_sello"], x["nombre"]) for x in sellos] == [(None, "Echizenya Kajū")] * 2
+    _correcciones(inter, _c(1, sellos[1]["id_entrada"], "corregir", None, "Kaj: Nuevo"))  # un nombre con «: » dentro
+    servicio.Servicio(inter, imagenes).vuelta()
+    corregido = next(x for x in _publicadas(inter) if x["id_entrada"] == sellos[1]["id_entrada"])
+    assert (corregido["tipo_sello"], corregido["nombre"]) == (None, "Kaj: Nuevo")
+
+
+def test_un_fichero_que_no_esta_en_utf8_no_tumba_la_vuelta(tmp_path, monkeypatch, capsys):
+    inter, imagenes = _montar(tmp_path, monkeypatch)
+    cola, aceptadas = inter / "para_catalogador" / "cola.jsonl", inter / "para_catalogador" / "aceptadas.jsonl"
+    bien = cola.read_bytes()
+    cola.write_bytes(bien + b'{"id_peticion": "idn-000040", "nota": "caf\xe9"}\n')  # latin-1, no UTF-8
+    _correcciones(inter, _c(1, FIRMA, "retirar"))
+    servicio.Servicio(inter, imagenes).vuelta()
+    assert "intercambio: cola.jsonl no está en UTF-8; se vuelve a leer en la vuelta siguiente" in capsys.readouterr().out
+    hecho = servicio.leer_hecho()
+    assert not hecho.get("peticiones") and not hecho.get("aceptadas")  # nada se da por hecho, tampoco lo aceptado
+    assert (inter / "de_catalogador" / "biblioteca.jsonl").exists()  # y el resto de la vuelta sigue
+    cola.write_bytes(bien)
+    servicio.Servicio(inter, imagenes).vuelta()
+    assert biblioteca.leer("firma", True)[0]["recorte"]  # lo aceptado entra con su recorte cuando la cola se lee
+    # lo mismo con aceptadas.jsonl
+    (tmp_path / "servicio.json").unlink()
+    texto = aceptadas.read_bytes()
+    aceptadas.write_bytes(texto.replace("ū".encode("utf-8"), b"\xe9"))  # latin-1, no UTF-8
+    servicio.Servicio(inter, imagenes).vuelta()
+    assert "intercambio: aceptadas.jsonl no está en UTF-8" in capsys.readouterr().out
+    assert not servicio.leer_hecho().get("aceptadas")
+
+
+def test_la_memoria_de_series_no_se_pierde_si_escribir_falla(tmp_path):
+    import ficha as F
+
+    memoria = tmp_path / "series.json"
+
+    def serie(japones):
+        return {"serie": {"japones": japones, "castellano": japones, "nivel": "museo misma estampa", "confianza": "alta"}}
+
+    assert F.recordar_serie(memoria, serie("葉うた虎之巻"), "TDP-008194")
+    with pytest.raises(UnicodeEncodeError):  # una serie con un sustituto suelto no se puede escribir en UTF-8
+        F.recordar_serie(memoria, serie("広重國周画\ud800"), "TDP-000001")
+    assert [m["serie"]["japones"] for m in F.leer_memoria(memoria)] == ["葉うた虎之巻"]  # la de antes sigue entera

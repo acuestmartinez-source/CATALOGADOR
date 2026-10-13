@@ -19,7 +19,11 @@ y `para_catalogador/biblioteca_correcciones.jsonl`.
   entrada entra sin recorte. Una línea que aun así falla se avisa y queda hecha. En `cola.jsonl`, una
   petición cuyo id no es `idn-` y seis cifras, cuya referencia no es `TDP-` y seis cifras o con una
   imagen fuera del almacén se salta con un aviso fijo y queda hecha; el Gestor no recibe noticia de
-  ella.
+  ella. Una línea sin un id que case con su patrón (`idn-`, `bic-` y seis cifras) no se apunta como
+  hecha: se salta con un aviso, uno por proceso. Un sello sin tipo se publica con `tipo_sello` nulo.
+  El criterio es que **ninguna línea JSON tumba una vuelta** (anidada sin fondo, con sustitutos
+  sueltos, números enormes, tipos cambiados o rutas largas), y lo vigila
+  `pruebas/test_lineas_al_azar.py` con una semilla fija.
 - **Aplica lo que pide el Gestor.** En cada vuelta, después de aprender de lo aceptado, el servicio
   lee `para_catalogador/biblioteca_correcciones.jsonl` y aplica cada `id_correccion` una sola vez y en
   orden (`corregir`, `retirar` o `restaurar`). Lo aplicado se apunta en

@@ -40,18 +40,39 @@ def _ahora() -> str:
 
 
 def leer_jsonl(ruta: Path) -> list[dict]:
-    """Las filas de un fichero del intercambio, sin la cabecera. Un fichero a medio escribir no tumba nada."""
+    """Las filas de un fichero del intercambio, sin la cabecera. Un fichero a medio escribir no tumba nada,
+    y uno que no está en UTF-8 se avisa y no da ninguna fila, así que nada suyo queda hecho."""
     if not ruta.exists():
         return []
+    texto = _texto_utf8(ruta)
+    if texto is None:
+        print(f"intercambio: {ruta.name} no está en UTF-8; se vuelve a leer en la vuelta siguiente", flush=True)
+        return []
     filas = []
-    for linea in ruta.read_text(encoding="utf-8").splitlines():
+    for linea in texto.splitlines():
         try:
             fila = json.loads(linea)
-        except ValueError:
+        except (ValueError, RecursionError):  # una línea rota, o anidada sin fondo, se salta (D-1037 del Gestor)
             continue
         if isinstance(fila, dict) and "formato" not in fila:
             filas.append(fila)
     return filas
+
+
+def _texto_utf8(ruta: Path) -> str | None:
+    try:
+        return ruta.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def _existe(ruta: Path) -> bool:
+    """`exists()` sobre una ruta que viene de fuera: un nombre demasiado largo (ENAMETOOLONG) o sin permiso
+    no tumba la vuelta, es una foto que no está."""
+    try:
+        return ruta.exists()
+    except OSError:
+        return False
 
 
 def anadir(ruta: Path, fila: dict, formato: str) -> None:
@@ -92,7 +113,7 @@ def guardar_hecho(h: dict) -> None:
     with _cerrojo:
         HECHO.parent.mkdir(parents=True, exist_ok=True)
         parcial = HECHO.with_suffix(".parcial")
-        parcial.write_text(json.dumps(h, ensure_ascii=False, indent=0), encoding="utf-8")
+        parcial.write_text(json.dumps(h, ensure_ascii=True, indent=0), encoding="utf-8")  # ni un sustituto suelto lo rompe
         parcial.replace(HECHO)
 
 
@@ -121,6 +142,8 @@ def ficha_de_intercambio(peticion: dict, r: dict) -> dict:
 
 
 REFERENCIA, PETICION = re.compile(r"TDP-[0-9]{6}"), re.compile(r"idn-[0-9]{6}")
+CORRECCION, ACEPTADA = re.compile(r"bic-[0-9]{6}"), re.compile(r"idn-[0-9]{6}:[0-9A-Za-z:.+-]{1,40}")
+LARGO_COMPONENTE = 255  # bytes: lo más que admite un nombre de fichero en el NAS
 
 
 def caja_limpia(caja) -> list[int] | None:
@@ -155,6 +178,7 @@ def peticion_valida(p: dict) -> bool:
             and isinstance(p.get("referencia"), str) and REFERENCIA.fullmatch(p["referencia"]) is not None
             and isinstance(p.get("grupo"), (str, type(None))) and isinstance(imagenes, list)
             and all(isinstance(r, str) and all(not q.anchor and ".." not in q.parts  # ni C:\, ni /, ni \\servidor, ni ..
+                                               and all(len(c.encode("utf-8", "surrogatepass")) <= LARGO_COMPONENTE for c in q.parts)
                                                for q in (PureWindowsPath(r), PurePosixPath(r))) for r in imagenes))
 
 
@@ -207,6 +231,12 @@ class Servicio:
         self.client = None
         self.hecho = leer_hecho()
         self.sin_miniatura: set[str] = set()  # los recortes propios que no se dejaron leer: un aviso por proceso
+        self.avisadas: set[str] = set()  # las líneas sin clave que apuntar: un aviso por proceso, no uno por vuelta
+
+    def _avisar(self, clave: str, texto: str) -> None:
+        if clave not in self.avisadas:
+            self.avisadas.add(clave)
+            print(texto, flush=True)
 
     def estado_de(self, p: dict, estado: str, detalle: str = "") -> None:
         anadir(self.estado, {"id_peticion": p["id_peticion"], "referencia": p["referencia"], "estado": estado,
@@ -217,11 +247,15 @@ class Servicio:
         hechas = set(self.hecho["peticiones"])
         nuevas, saltadas = [], 0
         for p in leer_jsonl(self.cola):
-            clave = str(p.get("id_peticion"))
+            clave = p.get("id_peticion") if isinstance(p.get("id_peticion"), str) else None
             if clave in hechas:
                 continue
             if not peticion_valida(p):  # el aviso es fijo: no repite lo que llegó
-                print("cola: una petición con el id, la referencia o una imagen fuera del contrato; se salta", flush=True)
+                aviso = "cola: una petición con el id, la referencia o una imagen fuera del contrato; se salta"
+                if clave is None or not PETICION.fullmatch(clave):  # sin una clave que apuntar: no se apunta
+                    self._avisar(f"cola:{clave}", aviso)
+                    continue
+                print(aviso, flush=True)
                 if not self.en_seco:
                     self.hecho["peticiones"].append(clave)
                     hechas.add(clave)
@@ -237,10 +271,10 @@ class Servicio:
 
     def una(self, p: dict) -> None:
         aplazar = fuera_de_hora(self.hasta)
-        fotos = [] if aplazar else [self.imagenes / r for r in p.get("imagenes") or [] if (self.imagenes / r).exists()][:2]
+        fotos = [] if aplazar else [self.imagenes / r for r in p.get("imagenes") or [] if _existe(self.imagenes / r)][:2]
         if self.en_seco:  # en seco solo se dice lo que pasaría: ni estado, ni ficha, ni la petición por hecha
             print(f"{p['referencia']}: " + ("se aplazaría" if aplazar else "terminaría en error: sin fotos en el almacén"
-                  if not fotos else f"se haría con {len(fotos)} foto(s), grupo {p.get('grupo') or '—'}"), flush=True)
+                  if not fotos else f"se haría con {len(fotos)} foto(s)"), flush=True)
             return
         if aplazar:
             self.estado_de(p, "aplazada", f"pasada la hora límite {self.hasta}")
@@ -288,12 +322,18 @@ class Servicio:
 
     def aprender(self) -> int:
         """Lo que una persona aceptó pasa a la biblioteca, a la memoria de series y al conjunto de oro."""
+        if self.cola.exists() and _texto_utf8(self.cola) is None:
+            return 0  # sin la cola no se encuentra la foto: lo aceptado espera a que la cola se lea
         hechas = set(self.hecho["aceptadas"])
         n = saltadas = 0
         try:
             for a in leer_jsonl(self.aceptadas):
-                clave = f"{a.get('id_peticion')}:{a.get('aceptado_en')}"
+                idp, cuando = a.get("id_peticion"), a.get("aceptado_en")
+                clave = f"{idp}:{cuando}" if isinstance(idp, str) and isinstance(cuando, (str, type(None))) else None
                 if clave in hechas:
+                    continue
+                if clave is None or not ACEPTADA.fullmatch(clave):  # sin una clave que apuntar: ni se aprende ni se apunta
+                    self._avisar(f"aceptadas:{clave}", "aceptadas: una línea sin un id o una fecha que apuntar; se salta")
                     continue
                 try:  # todo lo de una línea, también validar y limpiar las cajas, dentro de su try
                     if self._aprender_una(a):
@@ -328,7 +368,7 @@ class Servicio:
             return True
         p = self.pedido(a.get("id_peticion")) or {}
         foto = next((self.imagenes / r for r in (p.get("imagenes") if peticion_valida(p) else None) or []
-                     if (self.imagenes / r).exists()), None)
+                     if _existe(self.imagenes / r)), None)
         biblioteca.desde_aceptada(a, foto)
         serie = (a.get("campos") or {}).get("serie") or {}
         if serie.get("estado") in ("aceptado", "corregido") and serie.get("valor"):
@@ -344,7 +384,11 @@ class Servicio:
         n = 0
         for c in leer_jsonl(self.correcciones):
             idc = c.get("id_correccion")
-            if not isinstance(idc, str) or idc in hechas:
+            if not isinstance(idc, str) or not CORRECCION.fullmatch(idc):  # sin una clave que apuntar: no se apunta
+                self._avisar(f"correcciones:{idc if isinstance(idc, str) else None}",
+                             "biblioteca: una corrección sin un id_correccion que apuntar; se salta")
+                continue
+            if idc in hechas:
                 continue
             if self.en_seco:
                 print(f"biblioteca: se aplicaría {idc}", flush=True)
