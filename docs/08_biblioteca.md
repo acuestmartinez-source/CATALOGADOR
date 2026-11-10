@@ -39,7 +39,8 @@ y `para_catalogador/biblioteca_correcciones.jsonl`.
   `--una-vez` no hay vuelta siguiente: la orden sale con 1. La búsqueda del agente, en cambio, sigue
   sin la biblioteca y lo dice en una línea del registro.
 - **Busca con lo vigente.** `biblioteca.leer` pliega las tablas con lo aplicado: lo retirado deja de
-  salir en `buscar_firma` y `buscar_sello_editor`, y lo corregido sale corregido.
+  salir en `buscar_firma` y `buscar_sello_editor`, y lo corregido sale corregido. Al modelo le llegan la lectura,
+  el nombre y el parecido; la referencia de la obra, no (D-1840).
 - **Publica la biblioteca.** `de_catalogador/biblioteca.jsonl`, entera, con `.parcial` y renombrado,
   en ASCII y solo cuando algo cambia; antes, el recorte de cada entrada en
   `de_catalogador/biblioteca/<id_entrada>.jpg` (480 px como mucho y menos de 80 KB). Van vigentes y

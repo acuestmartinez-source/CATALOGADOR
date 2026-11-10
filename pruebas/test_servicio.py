@@ -140,7 +140,7 @@ def test_la_herramienta_del_agente_junta_lo_propio_y_lo_documentado(tmp_path, mo
     monkeypatch.setattr(biblioteca, "CORRECCIONES", tmp_path / "c.jsonl")
     biblioteca.anotar("sello", "TDP-1", "越嘉", "editor: Echizenya Kajū", None, None)
     salida = json.loads(agente.ejecutar("buscar_sello_editor", {"consulta": "越嘉"}, []))
-    assert salida["confirmadas_por_el_taller"][0]["referencia"] == "TDP-1"
+    assert salida["confirmadas_por_el_taller"][0]["nombre"] == "editor: Echizenya Kajū"
     assert any(d["editor"] == "Echizenya Kajū" for d in salida["documentadas"])
     assert json.loads(agente.ejecutar("datar_censor", {"tipo": "combinado", "animal": "丑", "mes": 2, "censores": []}, []))["anos"] == [1865]
 

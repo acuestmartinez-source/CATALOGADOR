@@ -6,7 +6,6 @@ agente pidió en `buscar_mas`. Si en la fase A ya salió la misma estampa en uki
 """
 from __future__ import annotations
 
-import base64
 import json
 import os
 import re
@@ -167,7 +166,7 @@ def ejecutar(nombre: str, entrada: dict, imagenes: list[Path]) -> list[dict] | s
             filas = firmas.buscar(consulta, limite=8)
             campos = ("nombre", "nombre_completo", "fechas_artista", "firma", "lectura", "fecha_firma", "fuente")
             vacio = "Ninguna firma documentada coincide: trata tu lectura como no cotejada."
-        salida = {"confirmadas_por_el_taller": [{k: f[k] for k in ("referencia", "lectura", "nombre", "parecido")} for f in propias],
+        salida = {"confirmadas_por_el_taller": [{k: f[k] for k in ("lectura", "nombre", "parecido")} for f in propias],
                   "documentadas": [{k: f[k] for k in campos} for f in filas]}
         return json.dumps(salida, ensure_ascii=False) if propias or filas else vacio
     if nombre == "datar_censor":
@@ -308,9 +307,10 @@ def turno(client, intentos: int = 3, **peticion):
 
 
 def bloque_imagen(ruta: Path) -> dict:
-    tipo = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}[ruta.suffix.lower()]
-    return {"type": "image", "source": {"type": "base64", "media_type": tipo,
-                                        "data": base64.standard_b64encode(ruta.read_bytes()).decode("ascii")}}
+    """La foto vuelta a codificar, como la lupa: solo los píxeles, sin su EXIF, XMP ni IPTC (D-1840)."""
+    import imagen
+
+    return imagen.a_bloque(imagen.recortar(ruta, None))
 
 
 def catalogar(client, obra: dict, imagenes: list[Path], modelo: str = MODELO_POR_DEFECTO, con_web: bool = True,

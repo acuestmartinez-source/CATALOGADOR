@@ -88,13 +88,13 @@ def test_retirar_no_borra_y_restaurar_la_devuelve(tmp_path, monkeypatch):
     _sin_buscar_fuera(monkeypatch)
     servicio.Servicio(inter, imagenes).vuelta()
     tabla = biblioteca.TABLA["firma"].read_bytes()
-    assert "TDP-008194" in agente.ejecutar("buscar_firma", {"consulta": "國周画"}, [])
+    assert "Toyohara Kunichika" in agente.ejecutar("buscar_firma", {"consulta": "國周画"}, [])
 
     _correcciones(inter, _c(1, FIRMA, "retirar"))
     servicio.Servicio(inter, imagenes).vuelta()
     assert biblioteca.TABLA["firma"].read_bytes() == tabla  # la tabla no se toca
     assert biblioteca.buscar("firma", "國周画") == [] and biblioteca.leer("firma") == []
-    assert "TDP-008194" not in agente.ejecutar("buscar_firma", {"consulta": "國周画"}, [])
+    assert "Toyohara Kunichika" not in agente.ejecutar("buscar_firma", {"consulta": "國周画"}, [])
     assert biblioteca.leer("firma", con_retiradas=True)[0]["estado"] == "retirada"
     assert biblioteca.resumen() == {"firmas": 0, "sellos": 1, "obras_adjudicadas": 1}
     firma = next(x for x in _publicadas(inter) if x["id_entrada"] == FIRMA)
@@ -103,7 +103,7 @@ def test_retirar_no_borra_y_restaurar_la_devuelve(tmp_path, monkeypatch):
     _correcciones(inter, _c(1, FIRMA, "retirar"), _c(2, FIRMA, "restaurar"))
     servicio.Servicio(inter, imagenes).vuelta()
     assert biblioteca.buscar("firma", "國周画")[0]["id_entrada"] == FIRMA
-    assert "TDP-008194" in agente.ejecutar("buscar_firma", {"consulta": "國周画"}, [])
+    assert "Toyohara Kunichika" in agente.ejecutar("buscar_firma", {"consulta": "國周画"}, [])
     firma = next(x for x in _publicadas(inter) if x["id_entrada"] == FIRMA)
     assert firma["estado"] == "vigente" and firma["correccion"] == "bic-000002"
 
@@ -385,7 +385,7 @@ def test_lo_que_ve_el_modelo_no_lleva_quien_confirmo(tmp_path, monkeypatch):
     servicio.Servicio(inter, imagenes).vuelta()
     texto = agente.ejecutar("buscar_firma", {"consulta": "國周画"}, [])
     propias = json.loads(texto)["confirmadas_por_el_taller"]
-    assert propias and all(set(f) == {"referencia", "lectura", "nombre", "parecido"} for f in propias)
+    assert propias and all(set(f) == {"lectura", "nombre", "parecido"} for f in propias)
     assert "ana@example.com" not in texto
     assert all("confirmado_por" not in f for f in biblioteca.buscar("firma", "國周画"))
 
@@ -564,7 +564,7 @@ def test_una_lectura_que_no_es_texto_no_rompe_la_busqueda(tmp_path, monkeypatch,
                             "id_peticion": "idn-000004", "recorte": None}) + "\n")
     assert [f["referencia"] for f in biblioteca.buscar("firma", "國周画")] == ["TDP-008194"]
     assert [f["referencia"] for f in biblioteca.buscar("sello", "越嘉")] == ["TDP-008194"]
-    assert json.loads(agente.ejecutar("buscar_firma", {"consulta": "國周画"}, []))["confirmadas_por_el_taller"][0]["referencia"] == "TDP-008194"
+    assert json.loads(agente.ejecutar("buscar_firma", {"consulta": "國周画"}, []))["confirmadas_por_el_taller"][0]["nombre"] == "Toyohara Kunichika"
     servicio.Servicio(inter, imagenes).vuelta()
     assert len(_publicadas(inter)) == 4
 

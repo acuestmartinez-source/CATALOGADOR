@@ -410,8 +410,9 @@ class Servicio:
                      if _existe(self.imagenes / r)), None)
         biblioteca.desde_aceptada(a, foto)
         serie = (a.get("campos") or {}).get("serie") or {}
-        if serie.get("estado") in ("aceptado", "corregido") and serie.get("valor"):
-            F.recordar_serie(MEMORIA, {"serie": {"japones": serie.get("valor"), "castellano": serie.get("valor"),
+        valor = serie_conocida({"serie_conocida": serie.get("valor")})  # vuelve a la API: el saneado de D-1787
+        if serie.get("estado") in ("aceptado", "corregido") and valor:
+            F.recordar_serie(MEMORIA, {"serie": {"japones": valor, "castellano": valor,
                                                  "nivel": "museo misma estampa", "confianza": "alta"}},
                              a["referencia"])
         return True

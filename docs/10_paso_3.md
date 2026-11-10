@@ -36,7 +36,7 @@ es seguro, solo que no ahorra.
 **Qué se le pasa.** Va en un solo bloque del primer mensaje:
 
 - `texto_memoria` de la primera hoja: serie en japonés, rómaji y castellano, autor, editor y su
-  sello, fecha, «ya catalogada en otra hoja de esta serie» (sin su referencia desde la 0.6.1, D-1840)
+  sello, fecha, «ya catalogada en N hojas de esta serie» (sin sus referencias desde la 0.6.1, D-1840)
   y hasta cinco fuentes;
 - la frase de la pasada corta: confirma en la estampa autor, serie, editor y sello; no busques en
   ukiyo-e.org ni en la web; identifica el título y el número de lámina de ESTA hoja; si algo no
@@ -212,55 +212,90 @@ memoria de series de siempre (`agente.catalogar(series=…)`), la pasada corta d
 
 **Qué cambia.**
 
-- `texto_memoria` dice «ya catalogada en otra hoja de esta serie» o «en N hojas de esta serie». El
-  número no es una referencia, y al modelo le basta.
+- `texto_memoria` dice «ya catalogada en 1 hoja de esta serie» o «en N hojas de esta serie». El
+  número no es una referencia, y al modelo le basta. Dice «1 hoja» y no «otra hoja» porque, si el
+  Gestor vuelve a pedir una obra que ya está en la memoria, esa hoja es la misma.
 - La memoria del disco (`datos/series_conocidas.json` y su lista `obras`) no cambia: es local y no
   sale. `ficha.hermana_de` tampoco: su `obras` se queda en el proceso.
+- `buscar_firma` y `buscar_sello_editor` devuelven de la biblioteca del taller
+  (`confirmadas_por_el_taller`) la lectura, el nombre y el parecido, y ya no la `referencia` de la
+  obra en la que una persona confirmó esa firma o ese sello (`agente.ejecutar`, línea 169). Lo que
+  devuelve una herramienta va entero a la API como `tool_result`.
+- Las fotos se vuelven a codificar antes de salir (`agente.bloque_imagen`, con `imagen.recortar` e
+  `imagen.a_bloque`, lo mismo que ya hacía la lupa): salen solo los píxeles, en JPEG de calidad 90,
+  sin EXIF, XMP ni IPTC. Antes salían los bytes del fichero tal cual, y con ellos lo que se apuntó
+  dentro: titulares con pinta de título, descripciones con el artista, palabras clave, autor y
+  derechos, números de serie de la cámara e historial de edición (muestreo de solo lectura de la
+  revisión: 74 de 80 fotos de `Z:\IMAGENES\originales` llevan metadatos; ninguna, una referencia).
+  Los tokens de imagen no cambian, porque dependen de los píxeles. En otras 80 fotos del almacén
+  ninguna lleva orientación EXIF, así que la foto entera y los recortes de la lupa siguen en el
+  mismo marco. Pesa algo más: en la muestra, de 0,08–0,52 MB a 0,10–0,72 MB, lejos del tope de la API.
 - El servicio deja de mandar las `pistas` de la petición (la URL y la nota que escribió una persona),
   que tampoco están en la lista. Hoy el Gestor las manda siempre vacías (`"pistas": []` en su
   `modulos/identificacion/api.py`), así que en la práctica no cambia nada. El contrato no se toca: el
   campo se sigue leyendo sin error. Las pistas de `piloto/pistas.csv` y de `--pista`, en las órdenes
   `catalogar` e `identificar`, siguen igual: son ficheros y argumentos de quien mide en este PC, no
   una petición del Gestor.
+- La serie aceptada o corregida en `aceptadas.jsonl` pasa por el saneado de la `serie_conocida`
+  (D-1787: de 1 a 200 caracteres y sin caracteres de control) antes de entrar en la memoria de
+  series, porque de ahí vuelve a la API cuando el OCR de otra hoja casa con ella.
 - `piloto/prompt.md` y las herramientas no se tocan, así que la caché del sistema sigue valiendo. El
-  cambio está en el primer mensaje, que ya cambiaba en cada obra.
+  cambio está en el primer mensaje, que ya cambiaba en cada obra, y en los `tool_result`.
 
 **Lo que se miró.** Cada texto que `agente.py`, `servicio.py` y `catalogador.py` meten en la
 conversación:
 
-- `agente.catalogar` (líneas 325 a 345): el sistema, las fotos en base64 (sin el nombre del fichero),
-  el OCR de la foto, la memoria de series, las pistas, la serie conocida, el bloque de la hermana y
-  las medidas;
+- `agente.catalogar` (líneas 326 a 345): el sistema, las fotos (sin el nombre del fichero y, desde
+  la 0.6.1, sin sus metadatos), el OCR de la foto, la memoria de series, las pistas, la serie
+  conocida, el bloque de la hermana y las medidas;
 - la fase B (387 a 391), que solo lleva lo que el modelo pidió en `buscar_mas`;
-- los resultados de las herramientas (393 a 413);
+- los resultados de las herramientas (393 a 413): la lupa (recortes vueltos a codificar), la
+  biblioteca y las bases públicas de firmas y sellos, `datar_censor` (un cálculo local) y ukiyo-e.org
+  (la consulta que escribe el modelo);
 - `servicio.Servicio.una` (318 a 327): de la petición pasan las fotos, las medidas y la serie
   conocida. La referencia va en `obra` pero no entra en la conversación; `id_peticion`, `grupo`,
   `pedido_por` y `pedido_en` no salen del servicio;
 - `catalogador.catalogar_una` (149 a 152) y `orden_identificar` (229 a 231): la referencia o el
   nombre, solo en `obra` y en el fichero de resultado.
 
-**Lo que queda abierto.** `agente.ejecutar` (línea 170) devuelve al modelo, en
-`confirmadas_por_el_taller` de `buscar_firma` y `buscar_sello_editor`, la `referencia` TDP de la obra
-en la que una persona confirmó esa firma o ese sello. Es otra referencia hacia la API, y no es de la
-petición en curso. Quitarla es quitar `"referencia"` de esa tupla, pero tres pruebas existentes piden
-que esté: `test_biblioteca.py`, líneas 388 y 567, y `test_servicio.py`, línea 143. Una prueba que ya
-existe no se edita para que pase, así que lo decide el orquestador. La guardiana no lo cubre: en sus
-caminos la biblioteca está vacía.
+**Lo que queda para el orquestador.**
+
+- La biblioteca sigue mandando la `lectura` (hasta 40 caracteres) y el `nombre` (hasta 120) que
+  confirmó o corrigió una persona en el Gestor. Es su razón de ser (D-1589), pero con una lectura
+  estricta de D-991 tampoco están en la lista: conviene que quede escrito si son parte de la
+  excepción o no.
+- La orden `catalogar` sigue mandando la `nota` libre de `piloto/pistas.csv`. Ese fichero no existe
+  hoy ni en `C:/dev/CATALOGADOR` ni en la rama, y es de quien mide, no del Gestor; pero es texto de
+  una persona hacia la API.
+
+**Pruebas reescritas por especificación.** Seis aserciones de cuatro pruebas existentes pedían la
+`referencia` en `confirmadas_por_el_taller`: `test_biblioteca.py`, líneas 91, 97 y 106
+(`test_retirar_no_borra_y_restaurar_la_devuelve`, que buscaba `TDP-008194` en la salida de
+`buscar_firma` como señal de que la firma salía o no), 388 (los campos que ve el modelo) y 567, y
+`test_servicio.py`, línea 143. Con D-1840 piden lo mismo con el `nombre` («Toyohara Kunichika»,
+«editor: Echizenya Kajū») y el conjunto de campos sin `referencia`. Como la de `test_biblioteca.py`
+en la 0.5.0, las ratifica la casa con el ADELANTE.
 
 **Prueba.** `pruebas/test_d1840_nada_de_referencias.py`. El cliente doble de `test_paso_2.py` guarda
 todo lo que se le pasa a `messages.stream`: modelo, sistema, mensajes, herramientas y el resto de
-argumentos. Sobre el `json.dumps` de todo eso, la prueba exige que no haya ningún `TDP-` con seis
-cifras, ningún `idn-` con seis cifras ni ningún `idn-g-`. De la petición, además, ni `pedido_en`, ni
-el nombre de sus fotos, ni la nota de sus pistas. La foto va en base64, que no tiene guiones. Los
-caminos que recorre, con una memoria de series que lleva dos obras TDP:
+argumentos. Sobre el `json.dumps` de todo eso, y sobre los bytes de cada foto enviada (el base64
+decodificado), la prueba exige que no haya ningún `TDP-` con seis cifras, ningún `idn-` con seis
+cifras ni ningún `idn-g-`. De la petición, además, ni `pedido_en`, ni `pedido_por`, ni el nombre de
+sus fotos, ni la nota de sus pistas. Las fotos de la prueba llevan una referencia en el EXIF y otra en
+el XMP. Los caminos que recorre, con una memoria de series que lleva dos obras TDP:
 
-- el servicio con la primera hoja completa y la hermana corta (D-1798);
+- el servicio con la primera hoja completa y la hermana corta (D-1798), que además tiene que llevar el
+  sello del editor y la fecha de la primera;
 - el servicio con la hermana repetida completa tras una contradicción (D-1799);
-- `catalogador.catalogar_una`, la medición ciega.
+- `catalogador.catalogar_una`, la medición ciega;
+- `buscar_firma` y `buscar_sello_editor` con la biblioteca aprendida de `aceptadas.jsonl`;
+- y que una serie aceptada con un carácter de control no entra en la memoria.
 
-Comprueba también que la memoria del disco sigue con sus obras. Con el código de la 0.6.0, las tres
-pruebas fallan: aparecen `TDP-007001`, `TDP-007002`, `TDP-008194` y la nota de la pista de la
-petición. Las pruebas pasan de 112 a 115.
+Comprueba también que la memoria del disco sigue con sus obras. En la ronda 1, con el código de la
+0.6.0, las tres primeras fallaban con `TDP-007001`, `TDP-007002`, `TDP-008194` y la nota de la pista de
+la petición. En la ronda 2, con el código de la ronda 1, fallaban las cinco: `TDP-123456` y
+`TDP-654321` en los bytes de las fotos, `TDP-008194` en la salida de `buscar_firma` y la serie con el
+carácter de control en la memoria. Las pruebas pasan de 112 a 117.
 
 **Despliegue.** Igual que la 0.6.0 (arriba), con `catalogador-0.6.1`. Los volúmenes no se tocan:
 la memoria de series que ya hay sirve tal cual.
