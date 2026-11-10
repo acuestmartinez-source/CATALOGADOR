@@ -3,7 +3,7 @@
 ADELANTE de la casa del 10/11/2026 al «paso 3»: «CATALOGADOR identifica a fondo la primera hoja y las
 demás con una pasada corta». Ese mismo día la casa pidió también consumo mínimo. Versión
 `catalogador-0.6.0` (la etiqueta la pone el orquestador tras el ADELANTE). Las pruebas están en
-`pruebas/test_hermanas.py`, sin API ni web: el agente y el cliente son dobles. Pasan de 92 a 110.
+`pruebas/test_hermanas.py`, sin API ni web: el agente y el cliente son dobles. Pasan de 92 a 112.
 
 El punto de partida es el de `docs/09_paso_2.md`, medido con las 35 fichas reales del NAS:
 **0,244 € por obra y 29 de 35 con fase B**. Hasta ahora, en un grupo no se hacía nada especial entre
@@ -17,16 +17,20 @@ la primera hoja y las demás:
 
 **Cuándo.** Una hoja va corta solo si se cumplen las dos condiciones:
 
-1. su petición trae `serie_conocida` válida (D-1787). El Gestor la manda cuando una persona ha
-   confirmado la serie, así que un grupo mezclado no la activa;
-2. **este proceso** ya documentó otra hoja del mismo `grupo`. Documentada quiere decir:
+1. su petición trae `serie_conocida` válida (D-1787);
+2. **este proceso** ya documentó otra hoja del mismo `grupo` **y con la misma `serie_conocida`**.
+   Hace falta la pareja, no basta el grupo: el Gestor da un `grupo` a cualquier petición de más de
+   una obra, también a las marcadas a la vez en la rejilla, y si no se le da una serie para todo el
+   grupo, cada línea lleva la `serie_literal` de su propia obra (su `modulos/identificacion/api.py`).
+   Un grupo puede mezclar series, y una obra de otra serie del mismo grupo va completa.
+   Documentada quiere decir:
    - serie con confianza alta y nivel entre los cinco primeros, la misma selección de la memoria de
      series pero sin exigir los caracteres japoneses (`ficha.hermana_de`);
    - y autor publicable (fiabilidad alta o media). Sin autor no hay nada que confirmar, y una pasada
      sin ukiyo-e.org ni web dejaría el autor sin buscar.
 
-Se guarda la primera hoja que cumple; las siguientes no la sustituyen. Vive solo en memoria
-(`Servicio.primeras`). Si el servicio se reinicia a medio grupo, las hojas que faltan van completas:
+Se guarda la primera hoja que cumple de cada pareja (grupo, `serie_conocida`); las siguientes no la
+sustituyen. Vive solo en memoria (`Servicio.primeras`). Si el servicio se reinicia a medio grupo, las hojas que faltan van completas:
 es seguro, solo que no ahorra.
 
 **Qué se le pasa.** Va en un solo bloque del primer mensaje:
@@ -86,6 +90,7 @@ La orden `catalogar` (las mediciones ciegas) no cambia.
   - primera sin autor publicable;
   - primera sin JSON;
   - hoja de otro grupo;
+  - hoja del mismo grupo con otra `serie_conocida` (también en seco);
   - tras reiniciar el servicio.
 - El bloque de la hermana no lleva precio, importe, ubicación, planero, cajón, procedencia,
   comprador, cliente, propietario, teléfono ni correo, aunque la ficha de la primera los trajera.
@@ -109,8 +114,10 @@ Al repetirla:
 
 - `coste_eur` suma las dos pasadas, también en `fichas.jsonl`, porque las dos se pagaron;
 - `fases` es el de la completa;
-- `resultados/servicio/<ref>.json` guarda la corta en `pasada_corta`, con `motivo`, `coste_eur` y
-  `duracion_s`. Ese campo no pasa al intercambio.
+- `estado.jsonl` lleva otro «identificando», el de la pasada completa, para que el Gestor no siga
+  viendo «fase A corta» mientras corre;
+- `resultados/servicio/<ref>.json` guarda la corta en `pasada_corta`, con `motivo`, `coste_eur`,
+  `duracion_s` y `uso` (sus tokens). Ese campo no pasa al intercambio.
 
 **Por qué.** Una hermana que no cuadra no debe quedarse con una ficha a medias. Una regla fija es
 barata, se prueba y no depende de otra llamada. El editor y la fecha no se comparan: si no cuadran,
@@ -121,7 +128,8 @@ el modelo lo dice en el `como` y baja la confianza, y la fiabilidad la calcula e
 - tres llamadas: la primera hoja, la hermana corta y la misma hermana completa;
 - 0,41 + 0,10 = 0,51 € en la ficha;
 - la ficha de la pasada completa;
-- `pasada_corta` con su motivo.
+- `pasada_corta` con su motivo y su `uso`;
+- un último «identificando» sin «corta».
 
 ## Cómo medir el ahorro
 
@@ -134,7 +142,7 @@ el modelo lo dice en el `como` y baja la confianza, y la fiabilidad la calcula e
    ```
 
    Cada hermana que iría corta lo dice: «se haría con N foto(s), corta si la primera del grupo sale
-   documentada». En seco no hay API, así que da por documentada la primera de cada grupo. La cifra
+   documentada». En seco no hay API, así que da por documentada la primera de cada grupo y serie. La cifra
    es, por tanto, el techo del ahorro, no el ahorro.
 2. Lo ya pagado: los `resultados/servicio/*.json` del volumen `catalogador_resultados`, que se leen
    en su sitio. Cada uno dice cuánto costó la obra (`coste_eur`), si hubo fase B (`fases`), cuántas

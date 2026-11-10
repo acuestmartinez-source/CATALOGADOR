@@ -115,7 +115,7 @@ def _servicio(tmp_path, monkeypatch, primera=PRIMERA, corta=PRIMERA):
         h = kw.get("hermana")
         llamadas.append((obra["referencia"], h))
         return {"referencia": obra["referencia"], "modelo": "doble", "fases": "A corta" if h else "A",
-                "coste_eur": 0.10 if h else 0.41, "duracion_s": 1.0, "ficha": copy.deepcopy(corta if h else primera),
+                "coste_eur": 0.10 if h else 0.41, "duracion_s": 1.0, "uso": {"corta": bool(h)}, "ficha": copy.deepcopy(corta if h else primera),
                 "para_web": None, "fuentes_verificadas": {}}
 
     monkeypatch.setattr(agente, "catalogar", doble)
@@ -145,15 +145,19 @@ def test_la_segunda_hoja_del_grupo_va_corta_con_la_memoria_de_la_primera(tmp_pat
     assert any(e["estado"] == "identificando" and "corta" in e["detalle"] for e in estados)
 
 
-def _otro_grupo(inter):
+def _segunda(inter, **campos):
     cola = inter / "para_catalogador" / "cola.jsonl"
     lineas = [json.loads(x) for x in cola.read_text(encoding="utf-8").splitlines()]
-    lineas[2]["grupo"] = "idn-g-000099"
+    lineas[2].update(campos)
     cola.write_text("".join(json.dumps(x, ensure_ascii=False) + "\n" for x in lineas), encoding="utf-8")
 
 
+#: El Gestor da grupo a cualquier petición de varias obras y, sin serie de grupo, cada una lleva la suya (su api.py).
+CAMBIOS = {"otro_grupo": {"grupo": "idn-g-000099"}, "otra_serie": {"serie_conocida": "Betsu no soroimono"}}
+
+
 @pytest.mark.parametrize("caso", ["sin_serie_conocida", "serie_no_alta", "serie_sin_cotejar", "sin_autor", "sin_json",
-                                  "otro_grupo"])
+                                  "otro_grupo", "otra_serie"])
 def test_sin_serie_conocida_o_sin_primera_documentada_va_completa(tmp_path, monkeypatch, caso):
     primera = {"serie_no_alta": {**PRIMERA, "serie": {**PRIMERA["serie"], "confianza": "media"}},
                "serie_sin_cotejar": {**PRIMERA, "serie": {**PRIMERA["serie"], "nivel": "lectura sin cotejar"}},
@@ -162,8 +166,8 @@ def test_sin_serie_conocida_o_sin_primera_documentada_va_completa(tmp_path, monk
     inter, imagenes, llamadas = _servicio(tmp_path, monkeypatch, primera)
     if caso == "sin_serie_conocida":
         _con_serie(inter, ...)
-    if caso == "otro_grupo":
-        _otro_grupo(inter)
+    if caso in CAMBIOS:
+        _segunda(inter, **CAMBIOS[caso])
     servicio.Servicio(inter, imagenes).vuelta()
     assert llamadas == [("TDP-008194", None), ("TDP-008133", None)]
     assert _ficha(inter, "idn-000002")["fases"] == "A"
@@ -194,7 +198,11 @@ def test_cada_contradiccion_repite_la_hoja_completa_y_suma_los_costes(tmp_path, 
     assert segunda["coste_eur"] == 0.51 and segunda["fases"] == "A"
     assert segunda["datos"]["autor"]["valor"] == "Toyohara Kunichika"  # la de la pasada completa
     guardado = json.loads((tmp_path / "resultados" / "servicio" / "TDP-008133.json").read_text(encoding="utf-8"))
-    assert guardado["pasada_corta"] == {"motivo": motivo, "coste_eur": 0.10, "duracion_s": 1.0}
+    assert guardado["pasada_corta"] == {"motivo": motivo, "coste_eur": 0.10, "duracion_s": 1.0, "uso": {"corta": True}}
+    # mientras corre la completa, el Gestor no sigue viendo «fase A corta»
+    detalles = [e["detalle"] for e in servicio.leer_jsonl(inter / "de_catalogador" / "estado.jsonl")
+                if e["id_peticion"] == "idn-000002" and e["estado"] == "identificando"]
+    assert "corta" in detalles[0] and "corta" not in detalles[-1]
 
 
 def test_la_hermana_llega_entera_a_la_api_y_sin_nada_de_la_persona_que_pidio(tmp_path, monkeypatch):
@@ -210,11 +218,18 @@ def test_la_hermana_llega_entera_a_la_api_y_sin_nada_de_la_persona_que_pidio(tmp
     assert "belen" not in primero + segundo  # `pedido_por` no sale del intercambio
 
 
-def test_en_seco_dice_que_hermanas_irian_cortas_sin_llamar_a_la_api(tmp_path, monkeypatch, capsys):
+@pytest.mark.parametrize("caso", [None, "otra_serie"])
+def test_en_seco_dice_que_hermanas_irian_cortas_sin_llamar_a_la_api(tmp_path, monkeypatch, capsys, caso):
     inter, imagenes, llamadas = _servicio(tmp_path, monkeypatch)
+    if caso:
+        _segunda(inter, **CAMBIOS[caso])
     monkeypatch.setattr(agente, "cliente", lambda: pytest.fail("en seco no hay API"))
-    servicio.Servicio(inter, imagenes, en_seco=True).vuelta()
+    s = servicio.Servicio(inter, imagenes, en_seco=True)
+    s.vuelta()
+    s.vuelta()  # sin --una-vez el bucle repite: la primera de cada grupo no pasa a «corta» en la segunda vuelta
     salida = capsys.readouterr().out
+    assert "TDP-008194: se haría con 2 foto(s), corta" not in salida
     assert "TDP-008194: se haría con 2 foto(s)\n" in salida
-    assert "TDP-008133: se haría con 1 foto(s), corta si la primera del grupo sale documentada" in salida
+    corta = ", corta si la primera del grupo sale documentada"
+    assert f"TDP-008133: se haría con 1 foto(s){'' if caso else corta}\n" in salida
     assert llamadas == [] and not (inter / "de_catalogador" / "fichas.jsonl").exists()

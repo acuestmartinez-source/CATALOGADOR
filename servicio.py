@@ -243,9 +243,10 @@ class Servicio:
         self.sin_miniatura: set[str] = set()  # los recortes propios que no se dejaron leer: un aviso por proceso
         self.avisadas: set[str] = set()  # las líneas sin clave que apuntar: un aviso por proceso, no uno por vuelta
         self.ultimo: dict[str, str] = {}  # el último estado que ESTE proceso escribió de cada petición
-        # D-1798: la primera hoja documentada de cada grupo, para la pasada corta de sus hermanas. Solo en
-        # memoria: si el servicio se reinicia a medio grupo, las que faltan van completas (no ahorra, y ya).
-        self.primeras: dict[str, dict] = {}
+        # D-1798: la primera hoja documentada de cada (grupo, serie_conocida), para la pasada corta de sus hermanas.
+        # Por las dos: el Gestor da grupo a cualquier selección de varias obras, y sin serie de grupo cada una lleva
+        # la suya. Solo en memoria: si el servicio se reinicia a medio grupo, las que faltan van completas.
+        self.primeras: dict[tuple, dict] = {}
 
     def _avisar(self, clave: str, texto: str) -> None:
         if clave not in self.avisadas:
@@ -287,10 +288,11 @@ class Servicio:
     def una(self, p: dict) -> None:
         aplazar = fuera_de_hora(self.hasta, desde=self.desde)
         fotos = [] if aplazar else [self.imagenes / r for r in p.get("imagenes") or [] if _existe(self.imagenes / r)][:2]
+        clave = (p.get("grupo"), serie_conocida(p))  # D-1798: hermanas = mismo grupo y misma serie confirmada
         if self.en_seco:  # en seco solo se dice lo que pasaría: ni estado, ni ficha, ni la petición por hecha
-            corta = p.get("grupo") in self.primeras and serie_conocida(p)
-            if p.get("grupo") and fotos and not aplazar:  # en seco no hay API: se da por documentada la primera
-                self.primeras.setdefault(p["grupo"], {})
+            corta = clave in self.primeras and clave[1]
+            if clave[0] and fotos and not aplazar:  # en seco no hay API: se da por documentada la primera
+                self.primeras.setdefault(clave, {})
             print(f"{p['referencia']}: " + ("se aplazaría" if aplazar else "terminaría en error: sin fotos en el almacén"
                   if not fotos else f"se haría con {len(fotos)} foto(s)" + (", corta si la primera del grupo sale documentada"
                                                                          if corta else "")), flush=True)
@@ -307,7 +309,7 @@ class Servicio:
             ocr = " ".join(b["texto"] for b in agente.ocr_ndl(fotos[0]))
             series = F.series_en_texto(F.leer_memoria(MEMORIA), ocr)
             # D-1798: pasada corta solo si una persona confirmó la serie del grupo y su primera hoja ya está documentada
-            hermana = self.primeras.get(p.get("grupo")) if serie_conocida(p) else None
+            hermana = self.primeras.get(clave) if clave[1] else None
             self.estado_de(p, "identificando", "fase A corta: lupa, firmas y sellos de la hermana" if hermana
                            else "fase A: lupa, firmas, sellos y ukiyo-e.org")
             if self.client is None:
@@ -318,9 +320,10 @@ class Servicio:
             motivo = hermana and F.contradice(r.get("ficha"), hermana)
             if motivo:  # D-1799: algo no cuadra con la primera; se repite completa y se paga la suma
                 corta = r
+                self.estado_de(p, "identificando", "fase A: lupa, firmas, sellos y ukiyo-e.org")
                 r = agente.catalogar(self.client, obra, fotos, **pedir)
                 r["coste_eur"] = round(r.get("coste_eur", 0.0) + corta.get("coste_eur", 0.0), 4)
-                r["pasada_corta"] = {"motivo": motivo, "coste_eur": corta.get("coste_eur"), "duracion_s": corta.get("duracion_s")}
+                r["pasada_corta"] = {"motivo": motivo, **{k: corta.get(k) for k in ("coste_eur", "duracion_s", "uso")}}
         except Exception as e:  # la petición queda en error; el Gestor puede volver a pedirla
             # Al intercambio va un motivo FIJO: el texto de una excepción puede llevar una ruta del NAS
             # o el cuerpo de un error de la API, y la ficha del Gestor lo pinta a cualquier cuenta.
@@ -332,8 +335,8 @@ class Servicio:
             return
         F.recordar_serie(MEMORIA, r.get("ficha"), p["referencia"])
         primera = F.hermana_de(r.get("ficha"), p["referencia"])
-        if p.get("grupo") and primera and primera["autor"]:  # sin autor publicable no hay nada que confirmar: completa
-            self.primeras.setdefault(p["grupo"], primera)
+        if clave[0] and primera and primera["autor"]:  # sin autor publicable no hay nada que confirmar: completa
+            self.primeras.setdefault(clave, primera)
         (RAIZ / "resultados" / "servicio").mkdir(parents=True, exist_ok=True)
         (RAIZ / "resultados" / "servicio" / f"{p['referencia']}.json").write_text(json.dumps(r, ensure_ascii=False, indent=2), encoding="utf-8")
         self.terminar(p, r, None, fotos[0])
@@ -487,6 +490,8 @@ class Servicio:
         return next((p for p in leer_jsonl(self.cola) if p.get("id_peticion") == id_peticion), None)
 
     def vuelta(self) -> int:
+        if self.en_seco:  # en seco nada se da por hecho: cada vuelta empieza sin primeras, como la primera
+            self.primeras.clear()
         grupos = self.pendientes()
         anunciadas = self.hecho.setdefault("anunciadas", [])
         for grupo in grupos:
