@@ -62,7 +62,7 @@ flowchart TD
 | **Esfuerzo medio** en lugar de alto | Menos razonamiento de salida (la salida era el 22 % del coste). |
 | **Ficha corta** | Sin listas de textos ni sellos: mucha menos salida. |
 | **Memoria de series** | Una serie documentada se pasa a sus hermanas en el mensaje, y no se vuelve a buscar. Reconoce la serie por su título japonés en el OCR, que lo lee bien. |
-| **Agrupar por serie** | Las hermanas se hacen seguidas: la primera documenta y las demás aprovechan. Desde el paso 3, si una persona confirmó la serie en el Gestor, las hermanas van con una **pasada corta**: la memoria de la primera, sin ukiyo-e.org ni web, topes reducidos y 8 vueltas; si algo no cuadra, se repiten completas (D-1798 y D-1799, `docs/10_paso_3.md`). |
+| **Agrupar por serie** | Las hermanas se hacen seguidas: la primera documenta y las demás aprovechan. Desde el paso 3, las hojas de un grupo que traen la misma `serie_conocida` que la primera (ya documentada) van con una **pasada corta**: la memoria de la primera, sin ukiyo-e.org ni web, topes reducidos y 8 vueltas; si algo no cuadra, se repiten completas (D-1798 y D-1799, `docs/10_paso_3.md`). |
 | **Topes más bajos** | Lupa 10, firmas 5, sellos 6, ukiyo-e.org 3 búsquedas y 4 fichas; web 8 y 8. En la pasada corta de una hermana: lupa 4, firmas 2, sellos 2, censor 1, ukiyo-e.org 0 y sin web. |
 | **OCR sin basura** | Los bloques de □ y letras latinas sueltas no se mandan. |
 
