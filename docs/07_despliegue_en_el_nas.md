@@ -22,6 +22,7 @@ este programa.
 TDP_IMAGENES_EN_EL_NAS=/volume1/…/IMAGENES
 TDP_INTERCAMBIO_EN_EL_NAS=/volume1/…/FOTO/_intercambio
 ANTHROPIC_WORKSPACE_ID=wrkspc_…
+CATALOGADOR_DESDE=06:00
 CATALOGADOR_HASTA=13:00
 ```
 
@@ -33,7 +34,7 @@ lee de `/run/secrets/anthropic_api_key`; `agente.cliente()` la busca ahí si no 
 1. **Proyecto nuevo** → carpeta `…/CATALOGADOR/` → `docker-compose.yml` el del repositorio. El Container Manager construye la imagen con el `Dockerfile`: Python 3.12, las dependencias, y el OCR de japonés antiguo de la Biblioteca Nacional de la Dieta clonado dentro con su propio entorno (sin la interfaz gráfica). La primera construcción tarda: descarga los modelos ONNX del OCR.
 2. **Primer arranque.** El servicio estrena el volumen `catalogador_datos` y, la primera vez que el agente lo necesita, descarga las bases de firmas y sellos de ukiyoesig.net (dos páginas, una vez; quedan en el volumen). Ahí viven también la caché de ukiyo-e.org, la biblioteca propia, la memoria de series y el estado del servicio.
 3. **Comprobar.** En el registro del contenedor debe salir `cola: /intercambio/para_catalogador/cola.jsonl · fotos: /imagenes` y, cada 15 segundos, nada más mientras la cola esté vacía. Para probarlo sin el Gestor: copiar a mano `contratos/intercambio/para_catalogador/cola.jsonl` a `_intercambio/para_catalogador/` con una referencia real y ver aparecer `de_catalogador/estado.jsonl` y `fichas.jsonl`.
-4. **Horario.** `--hasta 13:00` deja «aplazada» cualquier petición que llegue más tarde y la retoma al día siguiente a partir de las 06:00 (el contenedor sigue vivo; la hora es la del NAS, que debe estar en Europe/Madrid).
+4. **Horario.** `--desde 06:00 --hasta 13:00` deja «aplazada» cualquier petición que llegue fuera de ese tramo, con una sola línea por petición, y la retoma a partir de las 06:00 (el contenedor sigue vivo; la hora es la del NAS, que debe estar en Europe/Madrid). Hasta el paso 2 solo había `--hasta` y a las 00:00 volvía a trabajar (D-1786, `docs/09_paso_2.md`).
 
 ## 2 bis. El día que el Gestor encienda el almacén único
 
@@ -62,7 +63,7 @@ mismo `_intercambio`.
 Desde este PC, con las carpetas del NAS montadas en `Z:`:
 
 ```bash
-./.venv/Scripts/python.exe servicio.py --intercambio "Z:\FOTO\_intercambio" --imagenes "Z:\IMAGENES" --hasta 13:00
+./.venv/Scripts/python.exe servicio.py --intercambio "Z:\FOTO\_intercambio" --imagenes "Z:\IMAGENES" --desde 06:00 --hasta 13:00
 ```
 
 El contrato es el mismo; el Gestor no nota la diferencia.

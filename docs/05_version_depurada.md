@@ -73,7 +73,8 @@ con la misma muestra antes de darlo por bueno.
 
 ## A qué hora
 
-**De 06:00 a 13:00, hora de Madrid**, con `--hasta 13:00`:
+**De 06:00 a 13:00, hora de Madrid**, con `--desde 06:00 --hasta 13:00` (hasta el paso 2 solo había `--hasta`
+y a las 00:00 volvía a trabajar; D-1786, `docs/09_paso_2.md`):
 
 - **ukiyo-e.org** está en Estados Unidos: de 06:00 a 13:00 en Madrid es de medianoche a las 07:00 en Nueva York. Es su hora de menos tráfico, y el sitio ya se consulta despacio a propósito.
 - **El NAS** hace la copia del Gestor a las 03:00 y la orden de la noche de la tienda desde las 03:00. Empezar a las 06:00 deja ese tramo libre. Recuérdese que el NAS se cortó unos segundos durante la v3: ahora se espera y se repite.

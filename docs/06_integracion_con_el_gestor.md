@@ -88,7 +88,7 @@ tabla de censores como código. La casa quiere la suya. Lo que falta, por orden:
 
 En el NAS, en su contenedor, con dos carpetas compartidas con el Gestor: las imágenes en solo
 lectura y `_intercambio`. La clave de la API es un secreto de Docker, nunca una variable del
-compose. Atiende la cola de 06:00 a 13:00 (`--hasta`), cuando ukiyo-e.org tiene menos tráfico y el
+compose. Atiende la cola de 06:00 a 13:00 (`--desde` y `--hasta`), cuando ukiyo-e.org tiene menos tráfico y el
 NAS ya ha hecho sus copias; fuera de ese tramo deja las peticiones «aplazadas» y las retoma al día
 siguiente. Hasta que el contenedor exista, el servicio se puede lanzar desde este PC apuntando
 `TDP_INTERCAMBIO` e `TDP_IMAGENES` al NAS: el contrato es el mismo.
