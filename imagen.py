@@ -91,8 +91,10 @@ def mejorar(im: Image.Image, mejora: str) -> Image.Image:
 
 
 def a_bloque(im: Image.Image, calidad: int = 90) -> dict:
+    """Lo que va a la API: solo los píxeles (D-1840). Pillow escribe al guardar lo que trae `im.info` (el
+    comentario de un JPEG o el texto «comment» de un PNG), así que se guarda una imagen nueva sin nada más."""
     buf = BytesIO()
-    im.save(buf, format="JPEG", quality=calidad)
+    Image.frombytes(im.mode, im.size, im.tobytes()).save(buf, format="JPEG", quality=calidad)
     return {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
                                         "data": base64.standard_b64encode(buf.getvalue()).decode("ascii")}}
 

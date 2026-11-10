@@ -7,6 +7,7 @@ agente pidió en `buscar_mas`. Si en la fase A ya salió la misma estampa en uki
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import time
@@ -313,6 +314,13 @@ def bloque_imagen(ruta: Path) -> dict:
     return imagen.a_bloque(imagen.recortar(ruta, None))
 
 
+def medida(v) -> str:
+    """Una medida que va a la API, sin fiarse de quien la manda: un entero o un flotante finito, nunca un
+    booleano; si no, «—», que es «sin dato» (D-1840: de la petición sale la foto, las medidas y la serie)."""
+    ok = (isinstance(v, int) and not isinstance(v, bool)) or (isinstance(v, float) and math.isfinite(v))  # como caja_limpia
+    return str(v) if ok else "—"
+
+
 def catalogar(client, obra: dict, imagenes: list[Path], modelo: str = MODELO_POR_DEFECTO, con_web: bool = True,
               series: list[dict] | None = None, pistas: list[dict] | None = None, esfuerzo: str = ESFUERZO,
               serie_conocida: str | None = None, hermana: dict | None = None) -> dict:
@@ -341,7 +349,7 @@ def catalogar(client, obra: dict, imagenes: list[Path], modelo: str = MODELO_POR
             "\nPasada corta: esta hoja es hermana de la de arriba. Confirma en la estampa autor, serie, editor y sello; "
             "no busques en ukiyo-e.org ni en la web; identifica el título y el número de lámina de ESTA hoja. Si algo "
             "no cuadra, dilo en el `como` y deja la confianza en media o baja.")})
-    contenido.append({"type": "text", "text": f"Medidas de la hoja: {obra['alto_cm']} × {obra['ancho_cm']} cm (alto × ancho). "
+    contenido.append({"type": "text", "text": f"Medidas de la hoja: {medida(obra.get('alto_cm'))} × {medida(obra.get('ancho_cm'))} cm (alto × ancho). "
                       "Identifica la obra siguiendo las reglas."})
     mensajes = [{"role": "user", "content": contenido}]
 

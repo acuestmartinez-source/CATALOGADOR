@@ -91,5 +91,7 @@ lectura y `_intercambio`. La clave de la API es un secreto de Docker, nunca una 
 compose. Atiende la cola de 06:00 a 13:00 (`--desde` y `--hasta`), cuando ukiyo-e.org tiene menos tráfico y el
 NAS ya ha hecho sus copias; fuera de ese tramo deja las peticiones «aplazadas» y las retoma al día
 siguiente. Las peticiones de un grupo se hacen seguidas; las que traen la misma `serie_conocida` que
-la primera, si esa sale documentada, van con una pasada corta (D-1798, `docs/10_paso_3.md`). Hasta que el contenedor exista, el servicio se puede lanzar desde este PC apuntando
+la primera, si esa sale documentada, van con una pasada corta (D-1798, `docs/10_paso_3.md`).
+Desde la 0.6.1 (D-1840) el servicio lee las `pistas` de la petición, que el contrato sigue trayendo,
+pero no las manda a la API: de la petición salen solo las fotos, las medidas y la serie conocida. Hasta que el contenedor exista, el servicio se puede lanzar desde este PC apuntando
 `TDP_INTERCAMBIO` e `TDP_IMAGENES` al NAS: el contrato es el mismo.

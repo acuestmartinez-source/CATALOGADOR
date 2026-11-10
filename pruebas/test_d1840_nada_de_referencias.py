@@ -9,10 +9,11 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from PIL import Image
+from PIL import Image, PngImagePlugin
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import agente  # noqa: E402
+import biblioteca  # noqa: E402
 import catalogador  # noqa: E402
 import ficha as F  # noqa: E402
 import servicio  # noqa: E402
@@ -24,14 +25,23 @@ REFERENCIAS = re.compile(r"TDP-\d{6}|idn-\d{6}|idn-g-")
 #: Una memoria de series como la del disco: la serie que lee el OCR doble, ya catalogada en dos obras.
 MEMORIA = [{**F.hermana_de(PRIMERA, "TDP-007001"), "obras": ["TDP-007001", "TDP-007002"]}]
 OCR = [{"caja": [0, 0, 1, 1], "texto": "葉うた虎之巻", "confianza": 0.7}]
+#: Lo que la memoria tiene que seguir dando al modelo: el editor y la fuente de la primera hoja.
+EDITOR, FUENTE = "Echizenya Kajū", "https://ukiyo-e.org/image/etm/0189204030"
 
 
 def _con_metadatos(foto):
-    """Una foto como las del almacén: con EXIF y XMP dentro, y en ellos una referencia."""
+    """Una foto como las del almacén: con EXIF, XMP y comentario dentro (el segmento COM en un JPEG, el texto
+    «comment» en un PNG), y en ellos una referencia."""
     exif = Image.Exif()
     exif[0x010E] = "TDP-123456"  # ImageDescription
     xmp = b'<x:xmpmeta xmlns:x="adobe:ns:meta/"><dc:description>TDP-654321</dc:description></x:xmpmeta>'
-    Image.new("RGB", (300, 400), (230, 220, 200)).save(foto, exif=exif, xmp=xmp)
+    texto = PngImagePlugin.PngInfo()
+    texto.add_text("comment", "TDP-777777")
+    Image.new("RGB", (300, 400), (230, 220, 200)).save(foto, exif=exif, xmp=xmp, comment=b"TDP-777777", pnginfo=texto)
+
+
+def _textos(cliente):
+    return [b.get("text", "") for p in cliente.enviadas for b in p["messages"][0]["content"]]
 
 
 def _sin_nada_de_la_peticion(cliente, inter=None):
@@ -62,10 +72,10 @@ def test_el_servicio_no_manda_referencias_ni_nada_de_la_peticion(tmp_path, monke
     monkeypatch.setattr(agente, "cliente", lambda: cliente)
     servicio.Servicio(inter, imagenes).vuelta()
     assert len(cliente.enviadas) == llamadas
-    textos = [b.get("text", "") for p in cliente.enviadas for b in p["messages"][0]["content"]]
-    assert sum("ya catalogada en" in t for t in textos) >= llamadas
-    # la hermana corta lleva lo que el modelo necesita de la primera: el sello del editor y la fecha
-    assert any(CORTA in t and "越嘉" in t and "1862" in t for t in textos)
+    textos = _textos(cliente)
+    assert sum("ya catalogada en" in t and EDITOR in t and FUENTE in t for t in textos) >= llamadas
+    # la hermana corta lleva lo que el modelo necesita de la primera: el editor, su sello, la fecha y la fuente
+    assert any(CORTA in t and EDITOR in t and "越嘉" in t and "1862" in t and FUENTE in t for t in textos)
     _sin_nada_de_la_peticion(cliente, inter)
     # la memoria del disco es local y no sale: sigue apuntando las obras
     assert {"TDP-007001", "TDP-008194"} <= set(json.loads(servicio.MEMORIA.read_text(encoding="utf-8"))[0]["obras"])
@@ -84,7 +94,7 @@ def test_la_orden_catalogar_tampoco_manda_las_obras_de_la_memoria(tmp_path, monk
          "gestor": {"alto_cm": 35.2, "ancho_cm": 24.1, "tienda": {}}}
     args = SimpleNamespace(modelo=agente.MODELO_POR_DEFECTO, sin_web=False, esfuerzo=agente.ESFUERZO)
     assert catalogador.catalogar_una(cliente, o, args, {}) > 0
-    assert "ya catalogada en" in json.dumps(cliente.enviadas, ensure_ascii=False, default=str)
+    assert any("ya catalogada en" in t and EDITOR in t and FUENTE in t for t in _textos(cliente))
     _sin_nada_de_la_peticion(cliente)
 
 
@@ -105,3 +115,47 @@ def test_la_serie_aceptada_pasa_por_el_saneado_antes_de_la_memoria(tmp_path, mon
         '"valor": "Hauta tora no maki"', '"valor": "東海道五十三次\\u0007"'), encoding="utf-8")
     servicio.Servicio(inter, imagenes).vuelta()
     assert "東海道" not in servicio.MEMORIA.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("nombre", ["foto.jpg", "foto.png"])
+def test_ni_la_foto_entera_ni_la_lupa_llevan_el_comentario(tmp_path, nombre):
+    # Pillow escribe al guardar el comentario que trae la imagen (im.info["comment"]): sale solo lo que se ve
+    foto = tmp_path / nombre
+    _con_metadatos(foto)
+    with Image.open(foto) as im:
+        assert im.info["comment"] in (b"TDP-777777", "TDP-777777")  # la foto de la prueba lo lleva
+    lupa = agente.ampliar([foto], {"imagen": 1, "x0": 0, "y0": 0, "x1": 500, "y1": 500})
+    for bloque in [agente.bloque_imagen(foto), *lupa]:
+        assert b"TDP-" not in base64.b64decode(bloque["source"]["data"])
+
+
+def test_las_medidas_que_no_son_un_numero_no_llegan_a_la_api(tmp_path, monkeypatch):
+    # de la petición salen las medidas, y solo si son un número: un texto, un booleano o un NaN van como «—»
+    inter, imagenes = _montar(tmp_path, monkeypatch)
+    cola = inter / "para_catalogador" / "cola.jsonl"
+    cola.write_text(cola.read_text(encoding="utf-8").replace('"alto_cm": 34.9, "ancho_cm": 23.9',
+                                                            '"alto_cm": "TDP-777777", "ancho_cm": true')
+                    .replace('"alto_cm": 35.2', '"alto_cm": NaN'), encoding="utf-8")
+    cliente = _Cliente([_final(PRIMERA), _final(PRIMERA)])
+    monkeypatch.setattr(agente, "catalogar", CATALOGAR_DE_VERDAD)
+    monkeypatch.setattr(agente, "cliente", lambda: cliente)
+    servicio.Servicio(inter, imagenes).vuelta()
+    medidas = [t for t in _textos(cliente) if t.startswith("Medidas de la hoja")]
+    assert [m.split(" cm")[0] for m in medidas] == ["Medidas de la hoja: — × —", "Medidas de la hoja: — × 24.1"]
+    _sin_nada_de_la_peticion(cliente, inter)
+
+
+def test_la_firma_y_los_sellos_aceptados_pasan_por_el_saneado_antes_de_la_biblioteca(tmp_path, monkeypatch):
+    # la lectura y el nombre aprendidos vuelven a la API por buscar_firma y buscar_sello_editor (D-1787)
+    inter, imagenes = _montar(tmp_path, monkeypatch)
+    aceptadas = inter / "para_catalogador" / "aceptadas.jsonl"
+    cabecera, linea = aceptadas.read_text(encoding="utf-8").splitlines()
+    a = json.loads(linea)
+    a["firma_confirmada"]["lectura"] = "國周画\x07"
+    sello = a["sellos_confirmados"][0]
+    a["sellos_confirmados"] = [{**sello, "tipo": "editor\u202e", "nombre": " Echizenya \n Kajū "},
+                               {**sello, "nombre": "x" * 121, "caja": None}]
+    aceptadas.write_text(f"{cabecera}\n{json.dumps(a)}\n", encoding="utf-8")
+    servicio.Servicio(inter, imagenes).vuelta()
+    assert biblioteca.leer("firma") == []
+    assert [f["nombre"] for f in biblioteca.leer("sello")] == [": Echizenya Kajū"]

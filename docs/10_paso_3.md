@@ -219,11 +219,14 @@ memoria de series de siempre (`agente.catalogar(series=…)`), la pasada corta d
   sale. `ficha.hermana_de` tampoco: su `obras` se queda en el proceso.
 - `buscar_firma` y `buscar_sello_editor` devuelven de la biblioteca del taller
   (`confirmadas_por_el_taller`) la lectura, el nombre y el parecido, y ya no la `referencia` de la
-  obra en la que una persona confirmó esa firma o ese sello (`agente.ejecutar`, línea 169). Lo que
+  obra en la que una persona confirmó esa firma o ese sello (`agente.ejecutar`, línea 170). Lo que
   devuelve una herramienta va entero a la API como `tool_result`.
 - Las fotos se vuelven a codificar antes de salir (`agente.bloque_imagen`, con `imagen.recortar` e
   `imagen.a_bloque`, lo mismo que ya hacía la lupa): salen solo los píxeles, en JPEG de calidad 90,
-  sin EXIF, XMP ni IPTC. Antes salían los bytes del fichero tal cual, y con ellos lo que se apuntó
+  sin EXIF, XMP ni IPTC. Tampoco el comentario (el segmento COM de un JPEG o el texto «comment» de un
+  PNG): Pillow lo copia en `im.info` al abrir, lo conserva al recortar y lo escribe al guardar, así que
+  `a_bloque` guarda una imagen nueva hecha solo de los píxeles (`Image.frombytes`), para la foto entera
+  y para la lupa (ronda 3). Antes salían los bytes del fichero tal cual, y con ellos lo que se apuntó
   dentro: titulares con pinta de título, descripciones con el artista, palabras clave, autor y
   derechos, números de serie de la cámara e historial de edición (muestreo de solo lectura de la
   revisión: 74 de 80 fotos de `Z:\IMAGENES\originales` llevan metadatos; ninguna, una referencia).
@@ -239,20 +242,30 @@ memoria de series de siempre (`agente.catalogar(series=…)`), la pasada corta d
 - La serie aceptada o corregida en `aceptadas.jsonl` pasa por el saneado de la `serie_conocida`
   (D-1787: de 1 a 200 caracteres y sin caracteres de control) antes de entrar en la memoria de
   series, porque de ahí vuelve a la API cuando el OCR de otra hoja casa con ella.
+- Por lo mismo, al aprender `aceptadas.jsonl` la `lectura` (hasta 40 caracteres), el `nombre` (hasta
+  120) y el `tipo` del sello (hasta 40) de `firma_confirmada` y `sellos_confirmados` pasan por ese
+  saneado (`servicio.texto_limpio`, el que usa `serie_conocida`), porque vuelven a la API por
+  `buscar_firma` y `buscar_sello_editor`. Si la lectura o el nombre no valen, esa firma o ese sello no
+  entran en la biblioteca (`desde_aceptada` pide los dos); si no vale el tipo, el sello entra sin tipo
+  (ronda 3).
+- Las medidas solo salen si son un número: un entero o un flotante finito que no sea booleano
+  (`agente.medida`, en `agente.catalogar`, así que vale para el servicio, `catalogar` e `identificar`).
+  Si no, «—», lo que ya escribe el código para «sin dato». Antes, un texto que el Gestor pusiera en
+  `alto_cm` llegaba tal cual (ronda 3).
 - `piloto/prompt.md` y las herramientas no se tocan, así que la caché del sistema sigue valiendo. El
   cambio está en el primer mensaje, que ya cambiaba en cada obra, y en los `tool_result`.
 
 **Lo que se miró.** Cada texto que `agente.py`, `servicio.py` y `catalogador.py` meten en la
 conversación:
 
-- `agente.catalogar` (líneas 326 a 345): el sistema, las fotos (sin el nombre del fichero y, desde
+- `agente.catalogar` (líneas 334 a 353): el sistema, las fotos (sin el nombre del fichero y, desde
   la 0.6.1, sin sus metadatos), el OCR de la foto, la memoria de series, las pistas, la serie
   conocida, el bloque de la hermana y las medidas;
-- la fase B (387 a 391), que solo lleva lo que el modelo pidió en `buscar_mas`;
-- los resultados de las herramientas (393 a 413): la lupa (recortes vueltos a codificar), la
+- la fase B (395 a 399), que solo lleva lo que el modelo pidió en `buscar_mas`;
+- los resultados de las herramientas (401 a 421): la lupa (recortes vueltos a codificar), la
   biblioteca y las bases públicas de firmas y sellos, `datar_censor` (un cálculo local) y ukiyo-e.org
   (la consulta que escribe el modelo);
-- `servicio.Servicio.una` (318 a 327): de la petición pasan las fotos, las medidas y la serie
+- `servicio.Servicio.una` (323 a 332): de la petición pasan las fotos, las medidas y la serie
   conocida. La referencia va en `obra` pero no entra en la conversación; `id_peticion`, `grupo`,
   `pedido_por` y `pedido_en` no salen del servicio;
 - `catalogador.catalogar_una` (149 a 152) y `orden_identificar` (229 a 231): la referencia o el
@@ -263,7 +276,10 @@ conversación:
 - La biblioteca sigue mandando la `lectura` (hasta 40 caracteres) y el `nombre` (hasta 120) que
   confirmó o corrigió una persona en el Gestor. Es su razón de ser (D-1589), pero con una lectura
   estricta de D-991 tampoco están en la lista: conviene que quede escrito si son parte de la
-  excepción o no.
+  excepción o no. Desde la ronda 3 entran saneados; las correcciones de
+  `biblioteca_correcciones.jsonl` siguen con la regla de D-1221 del contrato (el largo, sin mirar los
+  caracteres de control), y lo que ya estuviera en la biblioteca de antes de la 0.6.1 no se vuelve a
+  sanear.
 - La orden `catalogar` sigue mandando la `nota` libre de `piloto/pistas.csv`. Ese fichero no existe
   hoy ni en `C:/dev/CATALOGADOR` ni en la rama, y es de quien mide, no del Gestor; pero es texto de
   una persona hacia la API.
@@ -289,13 +305,26 @@ el XMP. Los caminos que recorre, con una memoria de series que lleva dos obras T
 - el servicio con la hermana repetida completa tras una contradicción (D-1799);
 - `catalogador.catalogar_una`, la medición ciega;
 - `buscar_firma` y `buscar_sello_editor` con la biblioteca aprendida de `aceptadas.jsonl`;
-- y que una serie aceptada con un carácter de control no entra en la memoria.
+- que una serie aceptada con un carácter de control no entra en la memoria;
+- la foto entera y la lupa, con un JPEG y un PNG que llevan el comentario `TDP-777777`;
+- unas medidas que no son un número («TDP-777777», `true` y `NaN`), que salen como «—», y una buena
+  que sale tal cual;
+- y una firma y un sello aceptados con un carácter de control en la lectura, otro de formato en el
+  tipo, saltos en el nombre y un nombre de 121 caracteres: la firma y el sello largo no entran, y el
+  otro entra limpio y sin tipo.
+
+La memoria de series y la hermana corta tienen que llevar, en el mismo texto, el editor («Echizenya
+Kajū») y la URL de la fuente de la primera hoja: si se quitan de `ficha.texto_memoria`, tres pruebas
+se ponen en rojo (comprobado quitándolos).
 
 Comprueba también que la memoria del disco sigue con sus obras. En la ronda 1, con el código de la
 0.6.0, las tres primeras fallaban con `TDP-007001`, `TDP-007002`, `TDP-008194` y la nota de la pista de
 la petición. En la ronda 2, con el código de la ronda 1, fallaban las cinco: `TDP-123456` y
 `TDP-654321` en los bytes de las fotos, `TDP-008194` en la salida de `buscar_firma` y la serie con el
-carácter de control en la memoria. Las pruebas pasan de 112 a 117.
+carácter de control en la memoria. En la ronda 3, con el código de la ronda 2, fallaban siete: el
+comentario `TDP-777777` en los bytes de las fotos (las tres de antes y la foto entera y la lupa, en
+JPEG y en PNG), las medidas («TDP-777777 × True» y «nan × 24.1») y la lectura con el carácter de
+control en la biblioteca. Las pruebas pasan de 112 a 117 en la ronda 2 y a 121 en la ronda 3.
 
 **Despliegue.** Igual que la 0.6.0 (arriba), con `catalogador-0.6.1`. Los volúmenes no se tocan:
 la memoria de series que ya hay sirve tal cual.

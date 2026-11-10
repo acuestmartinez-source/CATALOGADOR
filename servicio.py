@@ -186,9 +186,14 @@ def serie_conocida(p: dict) -> str | None:
     """La serie que una persona escribió en el Gestor (D-991 del Gestor), sin fiarse: texto con los espacios
     y saltos de cualquier clase juntados en uno, de 1 a 200 caracteres y sin caracteres de control ni de
     formato. Si no vale, nada: la petición sigue sin ella (D-1787)."""
-    s = p.get("serie_conocida")
+    return texto_limpio(p.get("serie_conocida"), 200)
+
+
+def texto_limpio(s, largo: int) -> str | None:
+    """El saneado de D-1787 para un texto del Gestor que vuelve a la API: los espacios juntados, de 1 a
+    `largo` caracteres y sin caracteres de control ni de formato. Si no vale, nada."""
     s = " ".join(s.split()) if isinstance(s, str) else ""
-    return s if 0 < len(s) <= 200 and not any(unicodedata.category(c)[0] == "C" for c in s) else None
+    return s if 0 < len(s) <= largo and not any(unicodedata.category(c)[0] == "C" for c in s) else None
 
 
 def _sin_fecha(texto: str) -> str | None:
@@ -400,8 +405,12 @@ class Servicio:
         firma, sellos = a.get("firma_confirmada") or {}, a.get("sellos_confirmados") or []
         if any(x.get("caja") is not None and caja_limpia(x.get("caja")) is None for x in (firma, *sellos)):
             print("aceptadas: una caja fuera del contrato; esa firma o ese sello van sin recorte", flush=True)
-        a = {**a, "firma_confirmada": firma and {**firma, "caja": caja_limpia(firma.get("caja"))},
-             "sellos_confirmados": [{**s, "caja": caja_limpia(s.get("caja"))} for s in sellos]}
+        def limpio(x: dict) -> dict:  # D-1840: la lectura, el nombre y el tipo vuelven a la API por la biblioteca
+            return {**x, "caja": caja_limpia(x.get("caja")), "tipo": texto_limpio(x.get("tipo"), biblioteca.LARGO_LECTURA),
+                    "lectura": texto_limpio(x.get("lectura"), biblioteca.LARGO_LECTURA),
+                    "nombre": texto_limpio(x.get("nombre"), biblioteca.LARGO_NOMBRE)}
+
+        a = {**a, "firma_confirmada": firma and limpio(firma), "sellos_confirmados": [limpio(s) for s in sellos]}
         if self.en_seco:
             print(f"{a['referencia']}: se aprendería lo aceptado en {a.get('id_peticion')}", flush=True)
             return True
