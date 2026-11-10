@@ -271,18 +271,27 @@ conversación:
 - `catalogador.catalogar_una` (149 a 152) y `orden_identificar` (229 a 231): la referencia o el
   nombre, solo en `obra` y en el fichero de resultado.
 
-**Lo que queda para el orquestador.**
+**Lo que quedaba para el orquestador, y cómo quedó (11/11/2026).**
 
 - La biblioteca sigue mandando la `lectura` (hasta 40 caracteres) y el `nombre` (hasta 120) que
-  confirmó o corrigió una persona en el Gestor. Es su razón de ser (D-1589), pero con una lectura
-  estricta de D-991 tampoco están en la lista: conviene que quede escrito si son parte de la
-  excepción o no. Desde la ronda 3 entran saneados; las correcciones de
-  `biblioteca_correcciones.jsonl` siguen con la regla de D-1221 del contrato (el largo, sin mirar los
-  caracteres de control), y lo que ya estuviera en la biblioteca de antes de la 0.6.1 no se vuelve a
-  sanear.
+  confirmó o corrigió una persona en el Gestor. **Resuelto: la casa lo firmó** («Firmo: la biblioteca
+  sale»), y quedó como nota aditiva **D-1768** en ARQUITECTURA §8 regla 4, detrás de D-1789. Además
+  de la foto, las medidas y la serie conocida, sale lo que sabe la biblioteca de firmas y sellos: la
+  lectura y el nombre del artista o del editor, saneados como en D-1787. Nunca la referencia, ni
+  quién confirmó. Queda una cosa por hacer en el próximo parche, para que se cumpla del todo: «saneados
+  como en D-1787» hoy solo vale para lo que entra por `aceptadas.jsonl` desde la ronda 3. Las
+  correcciones de `biblioteca_correcciones.jsonl` siguen con la regla de D-1221 del contrato, que mira
+  el largo pero no los caracteres de control. Y lo que ya estaba en la biblioteca antes de la 0.6.1 no
+  se ha vuelto a sanear. Lo más corto es sanear al salir, en `agente.ejecutar`.
 - La orden `catalogar` sigue mandando la `nota` libre de `piloto/pistas.csv`. Ese fichero no existe
   hoy ni en `C:/dev/CATALOGADOR` ni en la rama, y es de quien mide, no del Gestor; pero es texto de
-  una persona hacia la API.
+  una persona hacia la API. **El orquestador, el 10/11/2026: se cierra**, en el próximo parche y con
+  su PARADA.
+- La `serie_conocida` que manda el Gestor (`serie_conocida or obra.serie_literal`) cuenta como
+  «escrita por una persona» en el sentido de D-991. Es la interpretación **D-1841** (orquestador, 10/11/2026):
+  la serie de una ficha la teclea una persona, viene del catálogo de la casa, del gestor antiguo o de
+  la tienda (escritos por personas), o la acepta una persona campo a campo y con rastro. Nunca la
+  pone una máquina sola.
 
 **Pruebas reescritas por especificación.** Seis aserciones de cuatro pruebas existentes pedían la
 `referencia` en `confirmadas_por_el_taller`: `test_biblioteca.py`, líneas 91, 97 y 106
