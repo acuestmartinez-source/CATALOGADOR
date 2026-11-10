@@ -1,6 +1,6 @@
 """El modo servicio: CATALOGADOR como programa auxiliar del Gestor, hablándose solo por ficheros (§7).
 
-  python servicio.py [--intercambio RUTA] [--imagenes RUTA] [--hasta HH:MM] [--una-vez] [--en-seco]
+  python servicio.py [--intercambio RUTA] [--imagenes RUTA] [--desde HH:MM] [--hasta HH:MM] [--una-vez] [--en-seco]
 
 Vigila `para_catalogador/cola.jsonl`; por cada petición nueva escribe su estado en
 `de_catalogador/estado.jsonl` y, al terminar, la propuesta en `de_catalogador/fichas.jsonl`.
@@ -21,13 +21,14 @@ import re
 import sys
 import threading
 import time
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import agente
 import biblioteca
 import ficha as F
-from catalogador import MEMORIA, cargar_env, fuera_de_hora
+from catalogador import MEMORIA, cargar_env, fuera_de_hora, hora, horario
 
 RAIZ = Path(__file__).resolve().parent
 HECHO = RAIZ / "datos" / "servicio.json"
@@ -124,8 +125,7 @@ def ficha_de_intercambio(peticion: dict, r: dict) -> dict:
     for campo in F.ESENCIALES:
         d = F.dato(fi, campo)
         detalle = {"autor": d.get("firma"), "editor": d.get("sello"), "censor": d.get("lectura") or d.get("sello"),
-                   "tecnica": d.get("formato"), "serie": " · ".join(x for x in (d.get("japones"),
-                   f"lámina {d['numero_lamina']}" if d.get("numero_lamina") else None) if x) or None, "titulo": None}[campo]
+                   "tecnica": d.get("formato"), "serie": F.detalle_serie(fi), "titulo": None}[campo]
         datos[campo] = {"valor": F.valor(fi, campo) or None, "detalle": detalle, "fiabilidad": F.fiabilidad(fi, campo),
                         "nivel": F.nivel(fi, campo) or None, "como": d.get("como"), "fuentes": d.get("fuentes") or [],
                         "cajas": d.get("cajas") or [],
@@ -182,6 +182,15 @@ def peticion_valida(p: dict) -> bool:
                                                for q in (PureWindowsPath(r), PurePosixPath(r))) for r in imagenes))
 
 
+def serie_conocida(p: dict) -> str | None:
+    """La serie que una persona escribió en el Gestor (D-991 del Gestor), sin fiarse: texto con los espacios
+    y saltos de cualquier clase juntados en uno, de 1 a 200 caracteres y sin caracteres de control ni de
+    formato. Si no vale, nada: la petición sigue sin ella (D-1787)."""
+    s = p.get("serie_conocida")
+    s = " ".join(s.split()) if isinstance(s, str) else ""
+    return s if 0 < len(s) <= 200 and not any(unicodedata.category(c)[0] == "C" for c in s) else None
+
+
 def _sin_fecha(texto: str) -> str | None:
     """Un fichero del intercambio salvo el `escrito_en` de su cabecera: lo que se compara para no
     reescribir lo mismo."""
@@ -219,7 +228,8 @@ def anotar(foto: Path, linea: dict, carpeta: Path) -> str | None:
 
 
 class Servicio:
-    def __init__(self, intercambio: Path, imagenes: Path, hasta: str | None = None, en_seco: bool = False):
+    def __init__(self, intercambio: Path, imagenes: Path, hasta: str | None = None, en_seco: bool = False,
+                 desde: str | None = None):
         self.cola = intercambio / "para_catalogador" / "cola.jsonl"
         self.aceptadas = intercambio / "para_catalogador" / "aceptadas.jsonl"
         self.estado = intercambio / "de_catalogador" / "estado.jsonl"
@@ -227,11 +237,12 @@ class Servicio:
         self.anotadas = intercambio / "de_catalogador" / "anotadas"
         self.correcciones = intercambio / "para_catalogador" / "biblioteca_correcciones.jsonl"
         self.biblioteca = intercambio / "de_catalogador" / "biblioteca.jsonl"
-        self.imagenes, self.hasta, self.en_seco = imagenes, hasta, en_seco
+        self.imagenes, self.desde, self.hasta, self.en_seco = imagenes, desde, hasta, en_seco
         self.client = None
         self.hecho = leer_hecho()
         self.sin_miniatura: set[str] = set()  # los recortes propios que no se dejaron leer: un aviso por proceso
         self.avisadas: set[str] = set()  # las líneas sin clave que apuntar: un aviso por proceso, no uno por vuelta
+        self.ultimo: dict[str, str] = {}  # el último estado que ESTE proceso escribió de cada petición
 
     def _avisar(self, clave: str, texto: str) -> None:
         if clave not in self.avisadas:
@@ -239,6 +250,7 @@ class Servicio:
             print(texto, flush=True)
 
     def estado_de(self, p: dict, estado: str, detalle: str = "") -> None:
+        self.ultimo[p["id_peticion"]] = estado
         anadir(self.estado, {"id_peticion": p["id_peticion"], "referencia": p["referencia"], "estado": estado,
                              "en": _ahora(), "detalle": detalle}, "estado")
 
@@ -270,14 +282,15 @@ class Servicio:
         return list(grupos.values())
 
     def una(self, p: dict) -> None:
-        aplazar = fuera_de_hora(self.hasta)
+        aplazar = fuera_de_hora(self.hasta, desde=self.desde)
         fotos = [] if aplazar else [self.imagenes / r for r in p.get("imagenes") or [] if _existe(self.imagenes / r)][:2]
         if self.en_seco:  # en seco solo se dice lo que pasaría: ni estado, ni ficha, ni la petición por hecha
             print(f"{p['referencia']}: " + ("se aplazaría" if aplazar else "terminaría en error: sin fotos en el almacén"
                   if not fotos else f"se haría con {len(fotos)} foto(s)"), flush=True)
             return
-        if aplazar:
-            self.estado_de(p, "aplazada", f"pasada la hora límite {self.hasta}")
+        if aplazar:  # una línea por racha, no una cada 15 s: el Gestor cuenta desde la primera (D-1785)
+            if self.ultimo.get(p["id_peticion"]) != "aplazada":
+                self.estado_de(p, "aplazada", horario(self.desde, self.hasta))
             return
         if not fotos:
             self.terminar(p, None, "sin fotos en el almacén")
@@ -290,7 +303,7 @@ class Servicio:
             if self.client is None:
                 self.client = agente.cliente()
             r = agente.catalogar(self.client, {"referencia": p["referencia"], "alto_cm": p.get("alto_cm"), "ancho_cm": p.get("ancho_cm")},
-                                 fotos, series=series, pistas=p.get("pistas") or None)
+                                 fotos, series=series, pistas=p.get("pistas") or None, serie_conocida=serie_conocida(p))
         except Exception as e:  # la petición queda en error; el Gestor puede volver a pedirla
             # Al intercambio va un motivo FIJO: el texto de una excepción puede llevar una ruta del NAS
             # o el cuerpo de un error de la API, y la ficha del Gestor lo pinta a cualquier cuenta.
@@ -480,11 +493,12 @@ def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--intercambio", type=Path, default=Path(os.environ.get("TDP_INTERCAMBIO", r"Z:\FOTO\_intercambio")))
     p.add_argument("--imagenes", type=Path, default=Path(os.environ.get("TDP_IMAGENES", r"Z:\IMAGENES")))
-    p.add_argument("--hasta", metavar="HH:MM", help="no empezar peticiones nuevas a partir de esa hora")
+    p.add_argument("--desde", metavar="HH:MM", type=hora, help="no empezar peticiones nuevas antes de esa hora")
+    p.add_argument("--hasta", metavar="HH:MM", type=hora, help="no empezar peticiones nuevas a partir de esa hora")
     p.add_argument("--una-vez", action="store_true", help="atiende lo que haya y termina (para el programador de tareas)")
     p.add_argument("--en-seco", action="store_true")
     args = p.parse_args(argv)
-    s = Servicio(args.intercambio, args.imagenes, args.hasta, args.en_seco)
+    s = Servicio(args.intercambio, args.imagenes, args.hasta, args.en_seco, args.desde)
     print(f"cola: {s.cola} · fotos: {args.imagenes}", flush=True)
     while True:
         try:

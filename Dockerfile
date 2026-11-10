@@ -24,4 +24,4 @@ ENV TZ=Europe/Madrid \
     PYTHONIOENCODING=utf-8
 
 # Las bases de firmas y sellos y el estado del servicio viven en /app/datos, que es un volumen.
-CMD ["python", "servicio.py", "--hasta", "13:00"]
+CMD ["python", "servicio.py", "--desde", "06:00", "--hasta", "13:00"]

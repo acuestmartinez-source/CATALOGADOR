@@ -38,7 +38,7 @@ def test_para_web_no_publica_lo_poco_fiable_pero_si_el_titulo_construido():
     assert web["autor"] == "Toyohara Kunichika" and web["autor_fiabilidad"] == "alta"
     assert web["editor"] == "" and web["editor_fiabilidad"] == "—"   # sin cotejar: no se publica
     assert web["titulo"] == "Cortesana con kamuro en una terraza" and web["titulo_construido"] is True
-    assert web["serie"] == "Manual de canciones hauta" and web["censor"] == "1862–1863"
+    assert web["serie"] == "Hauta tora no maki" and web["censor"] == "1862–1863"  # la serie, en rómaji (D-1784)
     assert web["tecnica"] == "Xilografía en color (nishiki-e)" and web["formato"] == "ōban tate-e"
     assert F.para_web(None)["titulo"] == ""
 

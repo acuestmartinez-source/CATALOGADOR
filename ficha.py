@@ -45,13 +45,21 @@ def dato(ficha: dict | None, campo: str) -> dict:
     return d if isinstance(d, dict) else {}
 
 
+#: Las vocales largas como las escribe la web: «Edo meishô zue», no «Edo meishō zue» (D-1784).
+CIRCUNFLEJO = str.maketrans("āīūēōĀĪŪĒŌ", "âîûêôÂÎÛÊÔ")
+
+
 def valor(ficha: dict | None, campo: str) -> str:
-    """El texto del dato tal como iría a la web, sin explicaciones."""
+    """El texto del dato tal como iría a la web, sin explicaciones. La serie, en rómaji y con
+    circunflejo, que es como la escribe la web; si no hay rómaji, en castellano o en japonés."""
     d = dato(ficha, campo)
     if campo in ("autor", "editor", "tecnica"):
         return (d.get("nombre") or "").strip()
-    if campo in ("titulo", "serie"):
+    if campo == "titulo":
         return (d.get("castellano") or d.get("romaji") or d.get("japones") or "").strip()
+    if campo == "serie":
+        romaji = unicodedata.normalize("NFC", d.get("romaji") or "").translate(CIRCUNFLEJO)
+        return (romaji or d.get("castellano") or d.get("japones") or "").strip()
     if campo == "censor":
         desde, hasta = d.get("fecha_desde"), d.get("fecha_hasta")
         if desde is None and hasta is None:  # fichas antiguas: la fecha iba aparte
@@ -61,6 +69,13 @@ def valor(ficha: dict | None, campo: str) -> str:
             return ""
         return str(desde or hasta) if desde in (None, hasta) or hasta is None else f"{desde}–{hasta}"
     return ""
+
+
+def detalle_serie(ficha: dict | None) -> str | None:
+    """Lo que acompaña a la serie: japonés · castellano · lámina N, los que haya y sin repetir el valor."""
+    d, v = dato(ficha, "serie"), valor(ficha, "serie")
+    partes = (d.get("japones"), d.get("castellano"), f"lámina {d['numero_lamina']}" if d.get("numero_lamina") else None)
+    return " · ".join(x for x in partes if x and x != v) or None
 
 
 def nivel(ficha: dict | None, campo: str) -> str:

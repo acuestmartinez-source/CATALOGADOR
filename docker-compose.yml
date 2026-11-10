@@ -10,7 +10,7 @@ services:
       TDP_IMAGENES: /imagenes
       TDP_INTERCAMBIO: /intercambio
       TDP_NDL_OCR: /opt/ndlkotenocr-lite
-      TZ: Europe/Madrid  # la hora límite (--hasta) es la de Madrid, no la UTC del contenedor
+      TZ: Europe/Madrid  # el horario (--desde, --hasta) es el de Madrid, no la UTC del contenedor
       ANTHROPIC_WORKSPACE_ID: ${ANTHROPIC_WORKSPACE_ID:-}
     secrets:
       - anthropic_api_key
@@ -19,7 +19,7 @@ services:
       - ${TDP_INTERCAMBIO_EN_EL_NAS:?pon la carpeta _intercambio del Gestor}:/intercambio
       - catalogador_datos:/app/datos
       - catalogador_resultados:/app/resultados
-    command: ["python", "servicio.py", "--hasta", "${CATALOGADOR_HASTA:-13:00}"]
+    command: ["python", "servicio.py", "--desde", "${CATALOGADOR_DESDE:-06:00}", "--hasta", "${CATALOGADOR_HASTA:-13:00}"]
 
 secrets:
   anthropic_api_key:

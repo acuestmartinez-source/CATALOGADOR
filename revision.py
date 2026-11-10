@@ -118,7 +118,7 @@ def obra(r: dict, g: dict, carpeta_img: Path) -> str:
         extra = {"autor": d.get("firma"), "editor": d.get("sello") or d.get("sello_lectura"),
                  "censor": d.get("lectura") or d.get("sello"), "tecnica": d.get("formato"),
                  "titulo": "título construido a partir de la imagen" if d.get("construido") else None,
-                 "serie": f"lámina {d['numero_lamina']}" if d.get("numero_lamina") else d.get("japones")}.get(campo)
+                 "serie": F.detalle_serie(fi)}.get(campo)
         fiab = F.fiabilidad(fi, campo)
         c = comp_de.get(campo)
         gestor_txt = (f'<span class="ok">✓ coincide</span>' if c else f'<span class="mal">✗ {e(gestor_de[campo])}</span>'

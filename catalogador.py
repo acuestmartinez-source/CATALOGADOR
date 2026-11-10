@@ -1,7 +1,7 @@
 """CATALOGADOR: identifica estampas japonesas del Gestor desde su foto y prepara los datos para la web.
 
 Órdenes:
-  python catalogador.py catalogar [--lista F.csv | --solo REF ...] [--hasta HH:MM] [--en-seco] [--repetir]
+  python catalogador.py catalogar [--lista F.csv | --solo REF ...] [--desde HH:MM] [--hasta HH:MM] [--en-seco] [--repetir]
   python catalogador.py identificar FOTO [FOTO ...] --medidas 35x24 [--pista URL ...]
   python catalogador.py informe   [--carpeta C] [--lista F.csv]
   python catalogador.py exportar  [--carpeta C] [--lista F.csv]         CSV con lo publicable
@@ -119,13 +119,26 @@ def agrupar(obras: list[dict]) -> list[list[dict]]:
     return sorted(grupos.values(), key=len, reverse=True) + [[o] for o in sueltas]
 
 
-def fuera_de_hora(hasta: str | None, ahora: datetime | None = None) -> bool:
-    """True si ya ha pasado la hora límite (HH:MM, hora del PC) para EMPEZAR obras nuevas."""
-    if not hasta:
+def hora(texto: str) -> str:
+    """Un HH:MM de la línea de órdenes; si no lo es, argparse lo dice y no arranca (D-1786)."""
+    datetime.strptime(texto, "%H:%M")
+    return texto
+
+
+def fuera_de_hora(hasta: str | None, ahora: datetime | None = None, desde: str | None = None) -> bool:
+    """True fuera del horario para EMPEZAR obras nuevas (HH:MM, hora del PC): antes de `desde` o de
+    `hasta` en adelante. Si `desde` va después de `hasta`, la ventana cruza la medianoche (D-1786)."""
+    if not desde and not hasta:
         return False
     ahora = ahora or datetime.now()
-    h, m = (int(x) for x in hasta.split(":"))
-    return (ahora.hour, ahora.minute) >= (h, m)
+    d = tuple(int(x) for x in desde.split(":")) if desde else (0, 0)
+    h = tuple(int(x) for x in hasta.split(":")) if hasta else (24, 0)
+    t = (ahora.hour, ahora.minute)
+    return not (d <= t < h if d <= h else t >= d or t < h)
+
+
+def horario(desde: str | None, hasta: str | None) -> str:
+    return f"fuera del horario {desde or '00:00'}–{hasta or '24:00'}"
 
 
 def catalogar_una(client, o: dict, args, pistas: dict) -> float:
@@ -194,8 +207,8 @@ def orden_catalogar(args) -> None:
     def un_grupo(grupo: list[dict]) -> float:
         total = 0.0
         for o in grupo:
-            if fuera_de_hora(args.hasta):
-                print(f"{o['referencia']}: pasada la hora límite {args.hasta}; queda para otro día", flush=True)
+            if fuera_de_hora(args.hasta, desde=args.desde):
+                print(f"{o['referencia']}: {horario(args.desde, args.hasta)}; queda para otro día", flush=True)
                 continue
             total += catalogar_una(client, o, args, pistas)
         return total
@@ -336,7 +349,8 @@ def main(argv: list[str] | None = None) -> None:
     grupo = c.add_mutually_exclusive_group()
     grupo.add_argument("--solo", nargs="*", metavar="REF")
     grupo.add_argument("--lista", type=Path, metavar="F.csv", help="CSV con columna «referencia» (por defecto, la muestra)")
-    c.add_argument("--hasta", metavar="HH:MM", help="no empezar obras nuevas a partir de esa hora")
+    c.add_argument("--desde", metavar="HH:MM", type=hora, help="no empezar obras nuevas antes de esa hora")
+    c.add_argument("--hasta", metavar="HH:MM", type=hora, help="no empezar obras nuevas a partir de esa hora")
     c.add_argument("--en-seco", action="store_true", help="dice qué haría, en qué grupos y cuánto costaría; no llama a la API")
     c.add_argument("--repetir", action="store_true", help="vuelve a hacer las que ya tienen resultado")
     c.add_argument("--paralelo", type=int, default=3)

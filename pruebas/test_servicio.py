@@ -152,7 +152,8 @@ def test_en_cola_se_escribe_una_vez_aunque_la_peticion_quede_aplazada_muchas_vue
     s.vuelta()
     servicio.Servicio(inter, imagenes, hasta="00:00").vuelta()  # otro proceso, mismo estado en disco
     estados = [e["estado"] for e in servicio.leer_jsonl(inter / "de_catalogador" / "estado.jsonl") if e["id_peticion"] == "idn-000001"]
-    assert estados.count("en_cola") == 1 and estados.count("aplazada") == 3
+    # «aplazada», una vez por racha y proceso (D-1785): una del primero y otra del segundo
+    assert estados.count("en_cola") == 1 and estados.count("aplazada") == 2
 
 
 def test_un_fallo_no_saca_al_intercambio_rutas_ni_textos_de_la_excepcion(tmp_path, monkeypatch):
