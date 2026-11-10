@@ -90,5 +90,6 @@ En el NAS, en su contenedor, con dos carpetas compartidas con el Gestor: las im�
 lectura y `_intercambio`. La clave de la API es un secreto de Docker, nunca una variable del
 compose. Atiende la cola de 06:00 a 13:00 (`--desde` y `--hasta`), cuando ukiyo-e.org tiene menos tráfico y el
 NAS ya ha hecho sus copias; fuera de ese tramo deja las peticiones «aplazadas» y las retoma al día
-siguiente. Hasta que el contenedor exista, el servicio se puede lanzar desde este PC apuntando
+siguiente. Las peticiones de un grupo se hacen seguidas; si traen `serie_conocida` y la primera
+hoja sale documentada, las demás van con una pasada corta (D-1798, `docs/10_paso_3.md`). Hasta que el contenedor exista, el servicio se puede lanzar desde este PC apuntando
 `TDP_INTERCAMBIO` e `TDP_IMAGENES` al NAS: el contrato es el mismo.

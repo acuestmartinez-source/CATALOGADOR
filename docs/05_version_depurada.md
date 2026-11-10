@@ -45,7 +45,7 @@ Va a la web (`catalogador.py exportar`, columna por dato y su fiabilidad):
 ```mermaid
 flowchart TD
     O["Obra del Gestor"] --> G{"¿Hay hermanas de la<br/>misma serie en la tanda?"}
-    G -->|sí| S["Se hacen seguidas,<br/>en el mismo hilo"]
+    G -->|sí| S["Se hacen seguidas; con serie conocida<br/>y la primera documentada,<br/>las demás van cortas (D-1798)"]
     G -->|no| A
     S --> A
     A["OCR local (gratis)<br/>+ ¿serie ya conocida en el OCR?"] --> FA
@@ -62,8 +62,8 @@ flowchart TD
 | **Esfuerzo medio** en lugar de alto | Menos razonamiento de salida (la salida era el 22 % del coste). |
 | **Ficha corta** | Sin listas de textos ni sellos: mucha menos salida. |
 | **Memoria de series** | Una serie documentada se pasa a sus hermanas en el mensaje, y no se vuelve a buscar. Reconoce la serie por su título japonés en el OCR, que lo lee bien. |
-| **Agrupar por serie** | Las hermanas se hacen seguidas, en el mismo hilo: la primera documenta y las demás aprovechan. |
-| **Topes más bajos** | Lupa 10, firmas 5, sellos 6, ukiyo-e.org 3 búsquedas y 4 fichas; web 8 y 8. |
+| **Agrupar por serie** | Las hermanas se hacen seguidas: la primera documenta y las demás aprovechan. Desde el paso 3, si una persona confirmó la serie en el Gestor, las hermanas van con una **pasada corta**: la memoria de la primera, sin ukiyo-e.org ni web, topes reducidos y 8 vueltas; si algo no cuadra, se repiten completas (D-1798 y D-1799, `docs/10_paso_3.md`). |
+| **Topes más bajos** | Lupa 10, firmas 5, sellos 6, ukiyo-e.org 3 búsquedas y 4 fichas; web 8 y 8. En la pasada corta de una hermana: lupa 4, firmas 2, sellos 2, censor 1, ukiyo-e.org 0 y sin web. |
 | **OCR sin basura** | Los bloques de □ y letras latinas sueltas no se mandan. |
 
 **Coste estimado, sin medir todavía**: fase A sola, 0,25–0,35 € por obra; con fase B, 0,55–0,75 €.
@@ -145,8 +145,8 @@ Desacuerdo con el Gestor por dato y fiabilidad, coste, fase B y fuentes.
 | Fichero | Qué hace |
 |---|---|
 | `catalogador.py` | Órdenes, acceso al Gestor en solo lectura, agrupación, hora límite, informe y exportación. |
-| `agente.py` | Herramientas, fases A y B, verificación de fuentes, coste. |
-| `ficha.py` | Los seis datos, la fiabilidad, lo publicable y la memoria de series. |
+| `agente.py` | Herramientas, fases A y B, la pasada corta de las hermanas, verificación de fuentes, coste. |
+| `ficha.py` | Los seis datos, la fiabilidad, lo publicable, la memoria de series y lo que la primera hoja deja a sus hermanas. |
 | `medir.py` | Comparación con el Gestor. |
 | `revision.py` | La página de revisión. |
 | `ukiyoe.py`, `firmas.py`, `sellos.py`, `imagen.py` | ukiyo-e.org con educación, las bases de firmas y sellos, las mejoras de imagen y los recuadros. |

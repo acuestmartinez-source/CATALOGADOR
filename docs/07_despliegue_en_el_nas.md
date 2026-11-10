@@ -57,6 +57,7 @@ mismo `_intercambio`.
 - La construcción de la imagen (en el PC no hay Docker). Si el OCR no instala alguna dependencia en Linux, el registro lo dice en la construcción; se arregla en el `Dockerfile`.
 - Cuánta CPU gasta el OCR en el NAS: en el PC son 9 s por foto. En el NAS será más; el agente lo espera.
 - El tiempo de respuesta de ukiyo-e.org desde el NAS, que ya se consulta a 20–35 s por petición.
+- La pasada corta de las hermanas (D-1798): con el próximo grupo de serie conocida, la segunda hoja dice «fase A corta» en `estado.jsonl`. Lo que ahorra se mide con el tope que autorice la casa (`docs/10_paso_3.md`).
 
 ## 5. Mientras el contenedor no exista
 
