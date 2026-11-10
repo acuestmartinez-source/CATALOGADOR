@@ -141,14 +141,14 @@ def leer_memoria(ruta: Path) -> list[dict]:
         return []
 
 
-def recordar_serie(ruta: Path, ficha: dict | None, referencia: str) -> dict | None:
-    """Guarda la serie (o el libro) de una ficha si está bien documentada, para sus hermanas."""
+def hermana_de(ficha: dict | None, referencia: str) -> dict | None:
+    """Lo que una hoja bien documentada deja a sus hermanas: la serie con confianza alta y nivel de documento
+    o de cotejo, y lo que la acompaña. Solo lo que salió del modelo: ni precios, ni personas, ni ubicaciones."""
     serie = dato(ficha, "serie")
-    clave = _cjk(serie.get("japones") or "")
-    if len(clave) < 3 or serie.get("confianza") != "alta" or nivel(ficha, "serie") not in NIVELES_MEMORIA:
+    if serie.get("confianza") != "alta" or nivel(ficha, "serie") not in NIVELES_MEMORIA:
         return None
-    entrada = {
-        "clave": clave,
+    return {
+        "clave": _cjk(serie.get("japones") or ""),
         "serie": {k: serie.get(k) for k in ("castellano", "japones", "romaji")},
         "autor": valor(ficha, "autor") if fiabilidad(ficha, "autor") in ("alta", "media") else "",
         "editor": valor(ficha, "editor") if fiabilidad(ficha, "editor") in ("alta", "media") else "",
@@ -159,6 +159,15 @@ def recordar_serie(ruta: Path, ficha: dict | None, referencia: str) -> dict | No
                        if isinstance(v, dict) and v.get("relacion") != "misma estampa"][:8],
         "obras": [referencia],
     }
+
+
+def recordar_serie(ruta: Path, ficha: dict | None, referencia: str) -> dict | None:
+    """Guarda la serie (o el libro) de una ficha si está bien documentada, para sus hermanas. Se reconoce
+    por su título japonés en el OCR, así que sin él (3 caracteres CJK o más) no se guarda."""
+    entrada = hermana_de(ficha, referencia)
+    if entrada is None or len(entrada["clave"]) < 3:
+        return None
+    clave = entrada["clave"]
     with _cerrojo:
         memoria = leer_memoria(ruta)
         previa = next((m for m in memoria if m["clave"] == clave), None)
@@ -199,3 +208,15 @@ def normalizar(texto: str | None) -> str:
     texto = unicodedata.normalize("NFKD", texto or "")
     texto = "".join(c for c in texto if not unicodedata.combining(c)).lower()
     return re.sub(r"[^a-z0-9 ]+", " ", texto).strip()
+
+
+def contradice(ficha: dict | None, hermana: dict) -> str:
+    """Por qué la pasada corta de una hermana no vale y se repite completa (D-1799); vacío si vale.
+    Una comprobación fija, sin volver a preguntar al modelo."""
+    if not ficha:
+        return "sin JSON"
+    if normalizar(valor(ficha, "autor")).split() != normalizar(hermana["autor"]).split():
+        return "autor"
+    if dato(ficha, "serie").get("confianza") != "alta":
+        return "serie"
+    return "buscar_mas" if any(str(x).strip() for x in ficha.get("buscar_mas") or []) else ""
