@@ -90,10 +90,12 @@ caché en el bloque que lo lleva («Create a cache control breakpoint at this co
 admiten `TextBlockParam`, `ToolResultBlockParam`, las imágenes y las herramientas; `type: "ephemeral"`,
 con `ttl` de 5 minutos por defecto. Hay también un `cache_control` de primer nivel en
 `messages.create` que lo pone solo en el último bloque cacheable; no se usa, porque el encargo pide el
-punto explícito y probado. Lo que context7 **no** confirmó: cuántos bloques mira la API hacia atrás
-para encontrar el prefijo anterior. Si una vuelta añade muchos bloques y no lo encuentra, lo escribe
-entero (techo apuntado con `ponytail:` en `agente.py`); si pasa, se deja también el punto anterior
-(tres de cuatro). Al pasar a la fase B cambian las herramientas y esa vuelta escribe la caché de nuevo.
+punto explícito y probado. La documentación de la plataforma (context7, `/websites/platform_claude_en`,
+prompt caching) dice cuántos bloques mira la API hacia atrás desde cada punto para encontrar el prefijo
+anterior: 20 posiciones, y una racha de `tool_use` o de `tool_result` cuenta como una; una vuelta de la
+fase A añade 3 o 4. Solo una vuelta de la fase B con muchas llamadas web seguidas podría pasarse y
+escribirlo entero (techo apuntado con `ponytail:` en `agente.py`); si pasa, se deja también el punto
+anterior (tres de cuatro). Al pasar a la fase B cambian las herramientas y esa vuelta escribe la caché de nuevo.
 
 **Pruebas.** Con un cliente doble que guarda lo enviado: en cada una de las cuatro llamadas (herramienta,
 pausa, herramienta, final) hay exactamente un `cache_control` en los mensajes, en el último bloque del
@@ -119,9 +121,18 @@ Si se cambia, en las dos copias a la vez y por el orquestador del Gestor.
 1. Una persona pone al día la carpeta del código de CATALOGADOR con `catalogador-0.5.0`.
 2. En el `.env` de CATALOGADOR, si se quiere otra hora de inicio, la línea `CATALOGADOR_DESDE=06:00`
    (sin ella, el compose ya usa las 06:00). El `.env` lo edita la casa.
-3. Container Manager → proyecto **catalogador-jap** → Detener → Construir (rehace la imagen con el
+3. Que la carpeta desde la que construye el proyecto lleve el código de esta versión (hoy el proyecto
+   construye desde la carpeta antigua, `Catalogador\CATALOGADOR`, con la versión de antes de la 0.4.0: el
+   «ACTUALIZAR - CATALOGADOR.txt» dice cómo pasarlo a `GESTOR_TDP_V2\catalogador`). Luego, Container
+   Manager → proyecto **catalogador-jap** → Detener → Construir (rehace la imagen con el
    código y el `docker-compose.yml` nuevos, que traen `--desde ${CATALOGADOR_DESDE:-06:00}`) → Iniciar.
    Los volúmenes `catalogador_datos` y `catalogador_resultados` **no se tocan**: ahí están la
    biblioteca, la memoria de series, `servicio.json` y la caché de ukiyo-e.org.
 4. Comprobar en el registro la línea `cola: … · fotos: …`, y fuera de las 06:00–13:00 una sola línea
-   «aplazada» por petición en `estado.jsonl`, con «fuera del horario 06:00–13:00», y no una cada 15 s.
+   «aplazada» por petición y racha en `estado.jsonl` (una más cada vez que se reinicia el contenedor), con «fuera del horario 06:00–13:00», y no una cada 15 s.
+
+**Ronda 1 de la revisión (APTO con menores), arreglados:** un rómaji que no es texto o va vacío ya no
+tumba la serie (cae al castellano); «aplazada» se apunta en memoria *después* de escribirla, para que un
+corte del NAS no deje la racha sin su línea; pruebas de que `catalogar` respeta `--desde` y no manda la
+serie conocida. Aviso: `--desde` igual a `--hasta` deja la ventana vacía (nunca trabaja); el detalle
+«fuera del horario 13:00–13:00» lo delata.

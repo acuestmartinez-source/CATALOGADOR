@@ -233,3 +233,67 @@ def test_un_solo_punto_de_cache_en_los_mensajes_y_avanza_con_la_conversacion(tmp
         assert sum("cache_control" in b for b in peticion["system"]) == 1  # con el de sistema, dos de los cuatro
     # el punto avanza: en la última llamada está en el resultado de la segunda herramienta
     assert cliente.enviadas[-1]["messages"][-1]["content"][-1]["tool_use_id"] == "t2"
+
+
+# ---------------------------------------------------------------- ronda 1 de la revisión
+
+def test_un_romaji_que_no_es_texto_o_esta_vacio_no_tumba_la_serie():
+    # El modelo puede devolver cualquier cosa, y cuando se calcula para_web la API ya está pagada.
+    for raro in (["Edo"], 5, "   ", ""):
+        assert F.valor({"serie": {**SERIE, "romaji": raro}}, "serie") == "Vistas de lugares famosos de Edo"
+
+
+def test_si_el_nas_se_corta_al_apuntar_aplazada_la_vuelta_siguiente_la_apunta(tmp_path, monkeypatch):
+    inter, imagenes = _montar(tmp_path, monkeypatch)
+    s = servicio.Servicio(inter, imagenes, hasta="00:00")
+    s.vuelta()  # en_cola y aplazada
+    s.estado_de(s.pendientes()[0][0], "leyendo", "OCR local")  # racha nueva
+    de_verdad = servicio.anadir
+
+    def cortado(ruta, fila, formato):
+        if fila.get("estado") == "aplazada":
+            raise OSError("el NAS no responde")
+        de_verdad(ruta, fila, formato)
+
+    monkeypatch.setattr(servicio, "anadir", cortado)
+    with pytest.raises(OSError):
+        s.vuelta()
+    monkeypatch.setattr(servicio, "anadir", de_verdad)
+    s.vuelta()
+    assert _estados(inter) == ["en_cola", "aplazada", "leyendo", "aplazada"]
+
+
+def _orden_catalogar_a_las_cinco(tmp_path, monkeypatch, desde):
+    hechas = []
+    (tmp_path / "foto.jpg").write_bytes(b"x")
+    monkeypatch.setattr(catalogador, "datetime", _A_las_cinco)
+    monkeypatch.setattr(catalogador, "RESULTADOS", tmp_path / "resultados")
+    monkeypatch.setattr(catalogador, "abrir_gestor", lambda: None)
+    monkeypatch.setattr(catalogador, "carpeta_imagenes", lambda: tmp_path)
+    monkeypatch.setattr(catalogador, "gestor", lambda con, ref: {"imagenes": ["foto.jpg"], "serie_literal": ""})
+    monkeypatch.setattr(catalogador, "leer_pistas", dict)
+    monkeypatch.setattr(agente, "cliente", lambda: None)
+    monkeypatch.setattr(catalogador, "catalogar_una", lambda client, o, args, pistas: hechas.append(o["referencia"]) or 0.0)
+    args = SimpleNamespace(solo=["TDP-000001"], lista=None, repetir=False, en_seco=False, paralelo=1,
+                           desde=desde, hasta="13:00")
+    catalogador.orden_catalogar(args)
+    return hechas
+
+
+def test_catalogar_respeta_desde(tmp_path, monkeypatch):
+    assert _orden_catalogar_a_las_cinco(tmp_path, monkeypatch, "06:00") == []
+    assert _orden_catalogar_a_las_cinco(tmp_path, monkeypatch, None) == ["TDP-000001"]
+
+
+def test_catalogar_por_linea_de_ordenes_no_manda_la_serie_conocida(tmp_path, monkeypatch):
+    # Las mediciones son ciegas: la orden «catalogar» no manda ninguna serie a la API.
+    llamadas = []
+    monkeypatch.setattr(catalogador, "MEMORIA", tmp_path / "series.json")
+    monkeypatch.setattr(agente, "ocr_ndl", lambda foto: [])
+    monkeypatch.setattr(agente, "catalogar", lambda *a, **k: llamadas.append(k) or {
+        "ficha": {}, "para_web": F.para_web({}), "coste_eur": 0.0, "fases": "A", "duracion_s": 0})
+    o = {"referencia": "TDP-000001", "destino": tmp_path / "TDP-000001.json", "fotos": [tmp_path / "foto.jpg"],
+         "gestor": {"alto_cm": 35, "ancho_cm": 24, "serie_literal": "Edo meishô zue", "tienda": {}}}
+    args = SimpleNamespace(modelo="m", sin_web=True, esfuerzo="low")
+    catalogador.catalogar_una(None, o, args, {})
+    assert llamadas and "serie_conocida" not in llamadas[0] and llamadas[0]["series"] == []

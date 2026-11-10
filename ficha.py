@@ -58,7 +58,8 @@ def valor(ficha: dict | None, campo: str) -> str:
     if campo == "titulo":
         return (d.get("castellano") or d.get("romaji") or d.get("japones") or "").strip()
     if campo == "serie":
-        romaji = unicodedata.normalize("NFC", d.get("romaji") or "").translate(CIRCUNFLEJO)
+        r = d.get("romaji")  # el modelo puede devolver cualquier cosa, y aquí la API ya está pagada
+        romaji = unicodedata.normalize("NFC", r).translate(CIRCUNFLEJO).strip() if isinstance(r, str) else ""
         return (romaji or d.get("castellano") or d.get("japones") or "").strip()
     if campo == "censor":
         desde, hasta = d.get("fecha_desde"), d.get("fecha_hasta")

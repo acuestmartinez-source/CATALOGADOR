@@ -344,7 +344,7 @@ def catalogar(client, obra: dict, imagenes: list[Path], modelo: str = MODELO_POR
     for _ in range(MAX_VUELTAS):
         # D-1788: un punto de caché que avanza, en el último bloque del último mensaje de usuario (dicts
         # nuestros; los del asistente son del SDK y no se tocan). Con el del sistema son dos de los cuatro.
-        # ponytail: un solo punto; si una vuelta añade muchos bloques, la API puede no encontrar el prefijo
+        # ponytail: un solo punto; la API mira 20 posiciones atrás: una vuelta de B con muchas webs puede no encontrar el prefijo
         # anterior y lo escribe de nuevo. Se mira en `uso` (cache_leida) de la próxima tanda.
         if punto is not None:
             punto.pop("cache_control", None)

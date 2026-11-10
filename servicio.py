@@ -250,9 +250,9 @@ class Servicio:
             print(texto, flush=True)
 
     def estado_de(self, p: dict, estado: str, detalle: str = "") -> None:
-        self.ultimo[p["id_peticion"]] = estado
         anadir(self.estado, {"id_peticion": p["id_peticion"], "referencia": p["referencia"], "estado": estado,
                              "en": _ahora(), "detalle": detalle}, "estado")
+        self.ultimo[p["id_peticion"]] = estado  # después: si el NAS se corta al escribir, la vuelta siguiente la escribe
 
     def pendientes(self) -> list[list[dict]]:
         """Las peticiones no hechas, por grupos (las de un grupo seguidas, en el orden en que se pidieron)."""
