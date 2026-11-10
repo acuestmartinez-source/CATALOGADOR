@@ -308,14 +308,17 @@ class Servicio:
             self.estado_de(p, "leyendo", "OCR local")
             ocr = " ".join(b["texto"] for b in agente.ocr_ndl(fotos[0]))
             series = F.series_en_texto(F.leer_memoria(MEMORIA), ocr)
-            # D-1798: pasada corta solo si una persona confirmó la serie del grupo y su primera hoja ya está documentada
+            # D-1798: pasada corta solo si la petición trae serie_conocida y este proceso ya documentó otra hoja
+            # con la misma clave (grupo, serie_conocida)
             hermana = self.primeras.get(clave) if clave[1] else None
             self.estado_de(p, "identificando", "fase A corta: lupa, firmas y sellos de la hermana" if hermana
                            else "fase A: lupa, firmas, sellos y ukiyo-e.org")
             if self.client is None:
                 self.client = agente.cliente()
             obra = {"referencia": p["referencia"], "alto_cm": p.get("alto_cm"), "ancho_cm": p.get("ancho_cm")}
-            pedir = dict(series=series, pistas=p.get("pistas") or None, serie_conocida=serie_conocida(p))
+            # D-1840: de la petición solo salen las fotos, las medidas y la serie conocida (D-991 del Gestor); las
+            # `pistas` del contrato se leen y no se mandan
+            pedir = dict(series=series, serie_conocida=serie_conocida(p))
             r = agente.catalogar(self.client, obra, fotos, hermana=hermana, **pedir)
             motivo = hermana and F.contradice(r.get("ficha"), hermana)
             if motivo:  # D-1799: algo no cuadra con la primera; se repite completa y se paga la suma

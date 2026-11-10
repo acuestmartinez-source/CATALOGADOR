@@ -192,13 +192,14 @@ def series_en_texto(memoria: list[dict], texto_ocr: str) -> list[dict]:
 
 
 def texto_memoria(series: list[dict]) -> str:
+    """Lo que va a la API de las series conocidas. Sin las referencias de `obras` (D-1840): solo cuántas."""
     lineas = []
     for m in series:
-        s = m["serie"]
+        s, n = m["serie"], len(m["obras"])
         lineas.append(
             f"- {s.get('japones')} · {s.get('romaji')} · {s.get('castellano')}: autor {m['autor'] or '—'}, "
             f"editor {m['editor'] or '—'} (sello {m['editor_sello'] or '—'}), fecha {m['fecha'] or '—'}; "
-            f"ya catalogada en {', '.join(m['obras'][:5])}; fuentes {' '.join(m['fuentes'][:5])}")
+            f"ya catalogada en {'otra hoja' if n == 1 else f'{n} hojas'} de esta serie; fuentes {' '.join(m['fuentes'][:5])}")
     return ("El taller ya ha documentado esta serie en otras obras. Compruébala en la estampa (cartucho, firma, "
             "sello de editor); si cuadra, usa estos datos con su nivel y no la vuelvas a buscar. El título de ESTA "
             "hoja sigue siendo tuyo:\n" + "\n".join(lineas))

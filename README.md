@@ -8,7 +8,8 @@ cómo se identificó cada dato, de qué fuente sale y con qué fiabilidad, y las
 - Integración con el Gestor (contrato de intercambio, servicio, contenedor, base propia): `docs/06_integracion_con_el_gestor.md`.
 - Despliegue en el NAS, contenedor propio: `docs/07_despliegue_en_el_nas.md`.
 - La biblioteca de firmas y sellos (identidad, correcciones del Gestor, publicación): `docs/08_biblioteca.md`.
-- Los pasos del programa de identificación: `docs/09_paso_2.md` (0.5.0) y `docs/10_paso_3.md` (0.6.0, la pasada corta de las hermanas).
+- Los pasos del programa de identificación: `docs/09_paso_2.md` (0.5.0) y `docs/10_paso_3.md` (0.6.0, la pasada corta de las hermanas;
+  0.6.1, D-1840: hacia la API no sale ninguna referencia ni las pistas de la petición).
 - Análisis crítico, fuentes y vínculos SKU: `docs/04_analisis_critico.md`.
 - Historia: `docs/00` (estudio), `01` (piloto), `02` (v2 y decisiones P-11 a P-25), `03` (resultados v2).
 

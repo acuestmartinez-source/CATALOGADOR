@@ -36,7 +36,8 @@ es seguro, solo que no ahorra.
 **Qué se le pasa.** Va en un solo bloque del primer mensaje:
 
 - `texto_memoria` de la primera hoja: serie en japonés, rómaji y castellano, autor, editor y su
-  sello, fecha, la referencia de la primera y hasta cinco fuentes;
+  sello, fecha, «ya catalogada en otra hoja de esta serie» (sin su referencia desde la 0.6.1, D-1840)
+  y hasta cinco fuentes;
 - la frase de la pasada corta: confirma en la estampa autor, serie, editor y sello; no busques en
   ukiyo-e.org ni en la web; identifica el título y el número de lámina de ESTA hoja; si algo no
   cuadra, dilo en el `como` y deja la confianza en media o baja.
@@ -199,3 +200,67 @@ toca.
    `catalogador_datos` y `catalogador_resultados` **no se tocan**, y el `.env` tampoco.
 3. Comprobar en `estado.jsonl`, con el siguiente grupo de serie conocida, que la segunda hoja dice
    «fase A corta: …» y luego «… € · fases A corta», o la suma si se repitió.
+
+## D-1840 · Hacia la API no sale ninguna referencia (catalogador-0.6.1)
+
+**Por qué.** El orquestador del Gestor, el 10/11/2026: la nota D-991 de ARQUITECTURA §8 regla 4 es
+una excepción cerrada. Hacia la API sale la fotografía, las medidas y, si una persona la escribió, la
+serie conocida, y nada más. `ficha.texto_memoria` escribía «ya catalogada en TDP-…, TDP-…» con las
+referencias de las obras donde se documentó la serie. Ese texto llegaba a la API por tres caminos: la
+memoria de series de siempre (`agente.catalogar(series=…)`), la pasada corta de una hermana
+(`hermana=…`, D-1798) y la orden `catalogar`. Una referencia no está en la lista.
+
+**Qué cambia.**
+
+- `texto_memoria` dice «ya catalogada en otra hoja de esta serie» o «en N hojas de esta serie». El
+  número no es una referencia, y al modelo le basta.
+- La memoria del disco (`datos/series_conocidas.json` y su lista `obras`) no cambia: es local y no
+  sale. `ficha.hermana_de` tampoco: su `obras` se queda en el proceso.
+- El servicio deja de mandar las `pistas` de la petición (la URL y la nota que escribió una persona),
+  que tampoco están en la lista. Hoy el Gestor las manda siempre vacías (`"pistas": []` en su
+  `modulos/identificacion/api.py`), así que en la práctica no cambia nada. El contrato no se toca: el
+  campo se sigue leyendo sin error. Las pistas de `piloto/pistas.csv` y de `--pista`, en las órdenes
+  `catalogar` e `identificar`, siguen igual: son ficheros y argumentos de quien mide en este PC, no
+  una petición del Gestor.
+- `piloto/prompt.md` y las herramientas no se tocan, así que la caché del sistema sigue valiendo. El
+  cambio está en el primer mensaje, que ya cambiaba en cada obra.
+
+**Lo que se miró.** Cada texto que `agente.py`, `servicio.py` y `catalogador.py` meten en la
+conversación:
+
+- `agente.catalogar` (líneas 325 a 345): el sistema, las fotos en base64 (sin el nombre del fichero),
+  el OCR de la foto, la memoria de series, las pistas, la serie conocida, el bloque de la hermana y
+  las medidas;
+- la fase B (387 a 391), que solo lleva lo que el modelo pidió en `buscar_mas`;
+- los resultados de las herramientas (393 a 413);
+- `servicio.Servicio.una` (318 a 327): de la petición pasan las fotos, las medidas y la serie
+  conocida. La referencia va en `obra` pero no entra en la conversación; `id_peticion`, `grupo`,
+  `pedido_por` y `pedido_en` no salen del servicio;
+- `catalogador.catalogar_una` (149 a 152) y `orden_identificar` (229 a 231): la referencia o el
+  nombre, solo en `obra` y en el fichero de resultado.
+
+**Lo que queda abierto.** `agente.ejecutar` (línea 170) devuelve al modelo, en
+`confirmadas_por_el_taller` de `buscar_firma` y `buscar_sello_editor`, la `referencia` TDP de la obra
+en la que una persona confirmó esa firma o ese sello. Es otra referencia hacia la API, y no es de la
+petición en curso. Quitarla es quitar `"referencia"` de esa tupla, pero tres pruebas existentes piden
+que esté: `test_biblioteca.py`, líneas 388 y 567, y `test_servicio.py`, línea 143. Una prueba que ya
+existe no se edita para que pase, así que lo decide el orquestador. La guardiana no lo cubre: en sus
+caminos la biblioteca está vacía.
+
+**Prueba.** `pruebas/test_d1840_nada_de_referencias.py`. El cliente doble de `test_paso_2.py` guarda
+todo lo que se le pasa a `messages.stream`: modelo, sistema, mensajes, herramientas y el resto de
+argumentos. Sobre el `json.dumps` de todo eso, la prueba exige que no haya ningún `TDP-` con seis
+cifras, ningún `idn-` con seis cifras ni ningún `idn-g-`. De la petición, además, ni `pedido_en`, ni
+el nombre de sus fotos, ni la nota de sus pistas. La foto va en base64, que no tiene guiones. Los
+caminos que recorre, con una memoria de series que lleva dos obras TDP:
+
+- el servicio con la primera hoja completa y la hermana corta (D-1798);
+- el servicio con la hermana repetida completa tras una contradicción (D-1799);
+- `catalogador.catalogar_una`, la medición ciega.
+
+Comprueba también que la memoria del disco sigue con sus obras. Con el código de la 0.6.0, las tres
+pruebas fallan: aparecen `TDP-007001`, `TDP-007002`, `TDP-008194` y la nota de la pista de la
+petición. Las pruebas pasan de 112 a 115.
+
+**Despliegue.** Igual que la 0.6.0 (arriba), con `catalogador-0.6.1`. Los volúmenes no se tocan:
+la memoria de series que ya hay sirve tal cual.
