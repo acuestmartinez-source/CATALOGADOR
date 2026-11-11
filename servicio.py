@@ -28,6 +28,8 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 import agente
 import biblioteca
 import ficha as F
+import indice
+import series
 from catalogador import MEMORIA, cargar_env, fuera_de_hora, hora, horario
 
 RAIZ = Path(__file__).resolve().parent
@@ -133,12 +135,20 @@ def ficha_de_intercambio(peticion: dict, r: dict) -> dict:
                                     "censor": d.get("lectura") or d.get("sello")}.get(campo)}
         if campo == "titulo":
             datos[campo]["construido"] = bool(d.get("construido"))
+    # Campos nuevos y opcionales del contrato (docs/11): `textos` y `edicion`. El aviso de tirada va además
+    # en el `detalle` del censor, que el Gestor ya enseña; la `lectura` del sello no se toca.
+    tirada = r.get("edicion") or F.edicion(fi)
+    aviso = F.resumen_edicion(tirada)
+    if aviso:
+        datos["censor"]["detalle"] = " · ".join(x for x in (datos["censor"]["detalle"], aviso) if x)
     return {"id_peticion": peticion["id_peticion"], "referencia": peticion["referencia"], "version_catalogador": "v4",
             "modelo": r.get("modelo"), "terminado_en": _ahora(), "coste_eur": r.get("coste_eur", 0.0),
             "fases": r.get("fases"), "tipo_obra": fi.get("tipo_obra"), "datos": datos,
             "para_web": r.get("para_web") or F.para_web(fi),
             "vinculadas": [v for v in fi.get("vinculadas") or [] if isinstance(v, dict)],
-            "fuentes_verificadas": r.get("fuentes_verificadas") or {}, "anotada": None, "error": None}
+            "fuentes_verificadas": r.get("fuentes_verificadas") or {}, "anotada": None,
+            "textos": r.get("textos") if isinstance(r.get("textos"), list) else F.textos(fi, r.get("ocr")),
+            "edicion": tirada, "anotada_textos": None, "error": None}
 
 
 REFERENCIA, PETICION = re.compile(r"TDP-[0-9]{6}"), re.compile(r"idn-[0-9]{6}")
@@ -206,6 +216,26 @@ def _sin_fecha(texto: str) -> str | None:
         return None
     c.pop("escrito_en", None)
     return json.dumps(c, sort_keys=True) + "\n" + cuerpo
+
+
+def anotar_textos(foto: Path, linea: dict, carpeta: Path) -> str | None:
+    """La primera foto con cada cuadro de texto numerado, del color de su dato; los números son los de
+    `textos`. Devuelve la ruta relativa a `de_catalogador/`, o None si no hay cuadros o no se pudo dibujar."""
+    marcas = [{"campo": {"autor": "artista"}.get(F.CAMPO_DE_TIPO.get(t.get("tipo")), F.CAMPO_DE_TIPO.get(t.get("tipo")) or "otro"),
+               "caja": t.get("caja"), "etiqueta": str(t.get("n"))} for t in linea.get("textos") or [] if isinstance(t, dict)]
+    if not marcas:
+        return None
+    try:
+        from imagen import anotar as dibujar
+        carpeta.mkdir(parents=True, exist_ok=True)
+        destino = carpeta / f"{linea['id_peticion']}_textos.jpg"
+        parcial = destino.with_suffix(".parcial")
+        dibujar(foto, marcas, lado=1400).save(parcial, "JPEG", quality=85)
+        parcial.replace(destino)
+    except Exception as e:  # una foto que no se deja dibujar no tumba la propuesta
+        print(f"{linea['referencia']}: sin foto de los cuadros de texto ({type(e).__name__})", flush=True)
+        return None
+    return f"{carpeta.name}/{destino.name}"
 
 
 #: La palabra de cada dato en la foto anotada: la misma que pinta el Gestor en su tabla.
@@ -358,7 +388,13 @@ class Servicio:
             linea = ficha_de_intercambio(p, r)
             if foto is not None:  # la imagen se escribe ANTES que la línea: quien lee la línea la encuentra
                 linea["anotada"] = anotar(foto, linea, self.anotadas)
+                linea["anotada_textos"] = anotar_textos(foto, linea, self.anotadas)
             anadir(self.fichas, linea, "fichas")
+            if foto is not None:
+                try:  # el índice del taller: los cuadros de esta propuesta, sin confirmar (docs/11)
+                    indice.desde_ficha(linea, foto)
+                except Exception as e:  # el índice es una ayuda: si falla, la propuesta ya está entregada
+                    print(f"{p['referencia']}: no entró en el índice ({type(e).__name__})", flush=True)
             self.estado_de(p, "lista", f"{r.get('coste_eur', 0):.2f} € · fases {r.get('fases')}")
         self.hecho["peticiones"].append(p["id_peticion"])
         guardar_hecho(self.hecho)
@@ -418,6 +454,7 @@ class Servicio:
         foto = next((self.imagenes / r for r in (p.get("imagenes") if peticion_valida(p) else None) or []
                      if _existe(self.imagenes / r)), None)
         biblioteca.desde_aceptada(a, foto)
+        indice.desde_aceptada(a)  # lo aceptado confirma sus cuadros en el índice; lo rechazado los retira
         serie = (a.get("campos") or {}).get("serie") or {}
         valor = serie_conocida({"serie_conocida": serie.get("valor")})  # vuelve a la API: el saneado de D-1787
         if serie.get("estado") in ("aceptado", "corregido") and valor:
@@ -522,6 +559,11 @@ class Servicio:
         aprendidas = self.aprender()
         self.corregir_biblioteca()
         self.publicar_biblioteca()
+        if (grupos or aprendidas) and not self.en_seco:
+            try:  # las series juntas, para la casa: local, en resultados/ (docs/11); si falla, la vuelta sigue
+                series.publicar(self.fichas, RAIZ / "resultados" / "series.md")
+            except Exception as e:
+                print(f"series: no se pudo escribir el informe ({type(e).__name__})", flush=True)
         return sum(len(g) for g in grupos) + aprendidas
 
 

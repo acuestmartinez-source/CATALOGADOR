@@ -25,11 +25,15 @@ ESFUERZO = "medium"
 MAX_VUELTAS = 30          # peticiones a la API por obra, por si algo se enreda
 MAX_REANUDACIONES = 5     # pause_turn del servidor
 LADO_AMPLIACION = 1400
-TOPES = {"ampliar": 10, "buscar_sello_editor": 6, "buscar_firma": 5, "datar_censor": 3, "ukiyoe_buscar": 3, "ukiyoe_ficha": 4}
+TOPES = {"ampliar": 10, "buscar_sello_editor": 6, "buscar_firma": 5, "datar_censor": 3, "ukiyoe_buscar": 3, "ukiyoe_ficha": 4,
+         "buscar_en_indice": 6, "fuentes_buscar": 4, "fuentes_ficha": 3, "ver_referencia": 2}
 # La pasada corta de una hermana (D-1798): sin ukiyo-e.org ni web. ukiyo-e.org va a tope 0 y no fuera de la
 # lista: las herramientas iguales que en la primera hoja dejan leer de caché las herramientas y el sistema.
-TOPES_HERMANA = {"ampliar": 4, "buscar_sello_editor": 2, "buscar_firma": 2, "datar_censor": 1, "ukiyoe_buscar": 0, "ukiyoe_ficha": 0}
+TOPES_HERMANA = {"ampliar": 4, "buscar_sello_editor": 2, "buscar_firma": 2, "datar_censor": 1, "ukiyoe_buscar": 0, "ukiyoe_ficha": 0,
+                 "buscar_en_indice": 3, "fuentes_buscar": 0, "fuentes_ficha": 0, "ver_referencia": 0}
 MAX_VUELTAS_HERMANA = 8
+OCR_EN_LUPA = 4           # recortes por obra que además lee el OCR de la NDL (cada uno son segundos de CPU)
+LADO_REFERENCIA = 1200    # el lado mayor de una imagen de referencia al mandarla
 WEB_POR_PETICION = 4      # max_uses de la API, que cuenta por petición
 WEB_POR_OBRA = 8          # tope de búsquedas, y otro de lecturas, sumando la fase B entera
 
@@ -37,6 +41,10 @@ WEB_POR_OBRA = 8          # tope de búsquedas, y otro de lecturas, sumando la f
 PRECIOS = {"claude-sonnet-5-5": (2.0, 10.0, 0.20), "claude-opus-5-5": (4.0, 20.0, 0.20), "claude-haiku-4-5": (1.0, 5.0, 0.10)}
 USD_POR_BUSQUEDA = 0.01
 EUR_POR_USD = 0.92  # ponytail: tipo fijo; los informes dicen que es aproximado
+
+#: Catálogos en línea dedicados a un artista, con sus series lámina a lámina: lo primero que mirar en la
+#: fase B cuando se sabe el autor (comprobados en pie el 11/11/2026; ver docs/11).
+CATALOGOS_DE_ARTISTA = ("hiroshige.org.uk", "kuniyoshiproject.com", "kunisada.de", "yoshitoshi.net")
 
 DOMINIOS_BLOQUEADOS = [
     "artnet.com", "artprice.com", "mutualart.com", "askart.com", "invaluable.com", "liveauctioneers.com",
@@ -73,15 +81,18 @@ LUPA = {
     "description": (
         "Recorte ampliado de una de las fotos, para leer firma, sellos y cartuchos. Coordenadas de 0 a 1000 "
         "(x de izquierda a derecha, y de arriba abajo). «mejora»: «contraste» para papel desvaído, «sin_rojo» si un "
-        "sello pisa la tinta, «solo_rojo» para leer un sello rojo, «tinta» para manchas y foxing."),
+        "sello pisa la tinta, «solo_rojo» para leer un sello rojo, «tinta» para manchas y foxing. Con «ocr» en true, "
+        "además del recorte recibes lo que lee en él el OCR de japonés antiguo de la NDL (útil en cartuchos, poemas e "
+        "inscripciones de varios caracteres; no en sellos): solo unas pocas veces por obra."),
     "input_schema": {
         "type": "object",
         "properties": {
             "imagen": {"type": "integer", "description": "1 o 2"},
             "x0": {"type": "integer"}, "y0": {"type": "integer"}, "x1": {"type": "integer"}, "y1": {"type": "integer"},
             "mejora": {"type": "string", "enum": ["ninguna", "contraste", "sin_rojo", "solo_rojo", "tinta"]},
+            "ocr": {"type": "boolean", "description": "true para que el OCR de la NDL lea también el recorte"},
         },
-        "required": ["imagen", "x0", "y0", "x1", "y1", "mejora"],
+        "required": ["imagen", "x0", "y0", "x1", "y1", "mejora", "ocr"],
         "additionalProperties": False,
     },
     "strict": True,
@@ -122,18 +133,91 @@ CENSOR = {
     "strict": True,
 }
 
-HERRAMIENTAS_A = [LUPA, FIRMA, SELLO, CENSOR, UKIYOE_BUSCAR, UKIYOE_FICHA]
+INDICE = {
+    "name": "buscar_en_indice",
+    "description": (
+        "Busca en el índice del taller un cuadro de ESTA estampa (firma, sello o cartucho): lo que ya se vio en "
+        "otras obras de la casa que dice lo mismo o, en cartuchos y sellos, tiene la misma forma. Dale el tipo, lo "
+        "que has leído (□ para lo ilegible; vacío si no se lee) y el recuadro en la foto. Devuelve qué dice, de quién "
+        "o de qué serie es, en cuántas hojas está y si una persona lo confirmó. Úsalo ANTES de buscar fuera: si el "
+        "cartucho de serie o el sello ya están confirmados, compruébalos en la estampa y no los busques otra vez."),
+    "input_schema": {"type": "object", "properties": {
+        "tipo": {"type": "string", "enum": ["firma", "sello_artista", "cartucho_serie", "cartucho_titulo", "sello_editor",
+                                           "sello_censor", "sello_fecha", "grabador", "estampador"]},
+        "lectura": {"type": "string", "description": "los caracteres leídos, o vacío"},
+        "imagen": {"type": "integer", "description": "1 o 2"},
+        "x0": {"type": "integer"}, "y0": {"type": "integer"}, "x1": {"type": "integer"}, "y1": {"type": "integer"}},
+        "required": ["tipo", "lectura", "imagen", "x0", "y0", "x1", "y1"], "additionalProperties": False},
+    "strict": True,
+}
+_FUENTE = {"type": "string", "enum": ["japan_search", "aic", "cleveland"]}
+FUENTES_BUSCAR = {
+    "name": "fuentes_buscar",
+    "description": (
+        "Busca en una fuente abierta con API. «japan_search» (el agregador nacional de Japón: NDL, museos nacionales, "
+        "bibliotecas y el portal de nishiki-e): búscalo EN JAPONÉS con el título de la serie y el de la lámina tal como "
+        "los lees (p. ej. «江戸名勝図会 浅草寺»); da autor, editor y fecha, y su ficha trae la firma, el grabador, el "
+        "sello de censura y el texto de la imagen del ejemplar de referencia. «aic» (Art Institute of Chicago) y "
+        "«cleveland» (Cleveland Museum of Art): en inglés o romaji, artista y serie. Devuelve id, título, autor, fecha, "
+        "URL e imagen de hasta 8 resultados."),
+    "input_schema": {"type": "object", "properties": {"fuente": _FUENTE, "consulta": {"type": "string"}},
+                     "required": ["fuente", "consulta"], "additionalProperties": False},
+    "strict": True,
+}
+FUENTES_FICHA = {
+    "name": "fuentes_ficha",
+    "description": ("Abre la ficha entera de un resultado de `fuentes_buscar`: inscripciones, sellos, firma, medidas, "
+                    "técnica y descripción, lo que la fuente tenga. Una ficha abierta sí es fuente."),
+    "input_schema": {"type": "object", "properties": {"fuente": _FUENTE, "id": {"type": "string"}},
+                     "required": ["fuente", "id"], "additionalProperties": False},
+    "strict": True,
+}
+REFERENCIA = _consulta(
+    "ver_referencia",
+    "Trae la IMAGEN de un ejemplar de referencia para compararla con la foto: pásale la dirección `imagen` que te "
+    "dio `ukiyoe_ficha`, `fuentes_buscar` o `fuentes_ficha`. Sirve para comprobar que es la misma composición y para "
+    "comparar, cuadro a cuadro, qué lleva cada ejemplar: cartuchos, firma, sello de editor, sellos de censura y de "
+    "fecha, márgenes. Solo dos por obra: úsala con la ficha que creas que es la misma estampa.",
+    "url", "la dirección de la imagen, tal como la dio la herramienta")
+
+HERRAMIENTAS_A = [LUPA, FIRMA, SELLO, CENSOR, UKIYOE_BUSCAR, UKIYOE_FICHA, INDICE, FUENTES_BUSCAR, FUENTES_FICHA, REFERENCIA]
 HERRAMIENTAS_B = HERRAMIENTAS_A + [
     {"type": "web_search_20260209", "name": "web_search", "max_uses": WEB_POR_PETICION, "blocked_domains": DOMINIOS_BLOQUEADOS},
     {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": WEB_POR_PETICION, "blocked_domains": DOMINIOS_BLOQUEADOS,
      "max_content_tokens": 6000},
 ]
 ORIGEN = {"buscar_sello_editor": "base documentada", "buscar_firma": "base documentada",
-          "ukiyoe_ficha": "abierta", "ukiyoe_buscar": "solo buscador"}
+          "ukiyoe_ficha": "abierta", "ukiyoe_buscar": "solo buscador",
+          "fuentes_ficha": "abierta", "fuentes_buscar": "solo buscador"}
 
 
-def ampliar(imagenes: list[Path], entrada: dict) -> list[dict]:
-    """El recorte que pide el agente, ampliado y tratado; o un texto de error que el agente puede leer."""
+def _caja_de(entrada: dict) -> tuple[int, int, int, int] | None:
+    try:
+        caja = tuple(max(0, min(1000, int(entrada[k]))) for k in ("x0", "y0", "x1", "y1"))
+    except (KeyError, TypeError, ValueError):
+        return None
+    return caja if caja[2] - caja[0] >= 5 and caja[3] - caja[1] >= 5 else None
+
+
+def ocr_recorte(im) -> str:
+    """Lo que lee el OCR de la NDL en un recorte ya ampliado; vacío si no lee nada o no se puede."""
+    import tempfile
+
+    import imagen
+
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            im.save(Path(tmp) / "recorte.jpg", quality=92)
+            lecturas = imagen.ocr_carpeta(Path(tmp)).get("recorte") or []
+    except Exception as e:  # el OCR es una ayuda: si falla, la lupa sigue
+        print(f"OCR del recorte: {type(e).__name__}", flush=True)
+        return ""
+    return " | ".join(f"{b['texto']} ({b['confianza']})" for b in lecturas if F._cjk(b.get("texto") or ""))[:600]
+
+
+def ampliar(imagenes: list[Path], entrada: dict, contexto: dict | None = None) -> list[dict]:
+    """El recorte que pide el agente, ampliado y tratado; o un texto de error que el agente puede leer.
+    Con `ocr`, además lo que lee en él el OCR de la NDL, hasta OCR_EN_LUPA veces por obra."""
     import imagen
 
     n = int(entrada.get("imagen", 1))
@@ -143,13 +227,93 @@ def ampliar(imagenes: list[Path], entrada: dict) -> list[dict]:
     if caja[2] - caja[0] < 5 or caja[3] - caja[1] < 5:
         return [{"type": "text", "text": "El recuadro es demasiado pequeño o está al revés: x1 > x0 e y1 > y0."}]
     recorte = imagen.ampliar_imagen(imagen.recortar(imagenes[n - 1], caja), LADO_AMPLIACION)
-    return [imagen.a_bloque(imagen.mejorar(recorte, entrada.get("mejora") or "ninguna"))]
+    tratado = imagen.mejorar(recorte, entrada.get("mejora") or "ninguna")
+    salida = [imagen.a_bloque(tratado)]
+    if entrada.get("ocr") is True and contexto is not None:
+        if contexto.get("ocr_lupa", 0) >= OCR_EN_LUPA:
+            salida.append({"type": "text", "text": "OCR de la NDL: agotadas las lecturas de recortes de esta obra."})
+        else:
+            contexto["ocr_lupa"] = contexto.get("ocr_lupa", 0) + 1
+            leido = ocr_recorte(tratado)
+            salida.append({"type": "text", "text": ("OCR de la NDL en este recorte (pista con errores; entre paréntesis, "
+                                                   "su confianza): " + leido) if leido
+                           else "OCR de la NDL: no lee nada en este recorte."})
+    return salida
 
 
-def ejecutar(nombre: str, entrada: dict, imagenes: list[Path]) -> list[dict] | str:
-    """Una herramienta del taller. Devuelve el contenido del tool_result."""
+def buscar_en_indice(imagenes: list[Path], entrada: dict, contexto: dict | None) -> str:
+    """Lo que el índice del taller ya vio parecido a un cuadro de esta estampa. Sin referencias (D-1840)."""
+    import imagen
+    import indice
+
+    tipo, lectura = str(entrada.get("tipo") or ""), str(entrada.get("lectura") or "")[:160]
+    n, caja, recorte = entrada.get("imagen"), _caja_de(entrada), None
+    if isinstance(n, int) and 1 <= n <= len(imagenes) and caja:
+        try:
+            recorte = imagen.recortar(imagenes[n - 1], caja)
+        except Exception:  # sin recorte se busca solo por lo que dice
+            recorte = None
+    filas = indice.buscar(tipo, lectura, recorte, sin_referencia=(contexto or {}).get("referencia") or "")
+    if not filas:
+        return "El índice del taller no tiene nada parecido: sigue como siempre."
+    campos = ("tipo", "lectura", "nombre", "dice_parecido", "forma", "hojas", "confirmada")
+    return json.dumps({"ya_visto_en_el_taller": [{k: f[k] for k in campos} for f in filas],
+                       "nota": "«confirmada» es que una persona lo aceptó en el Gestor; lo demás son propuestas "
+                               "anteriores del catalogador: compruébalo en la estampa. La forma es una pista."},
+                      ensure_ascii=False)
+
+
+def ver_referencia(entrada: dict) -> list[dict] | str:
+    """La imagen de un ejemplar de referencia, reducida y vuelta a codificar, para compararla con la foto."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    import imagen
+    import museos
+
+    url = str(entrada.get("url") or "").strip()
+    try:
+        with Image.open(BytesIO(museos.imagen(url))) as im:
+            im = im.convert("RGB")
+            im.thumbnail((LADO_REFERENCIA, LADO_REFERENCIA))
+            bloque = imagen.a_bloque(im, calidad=85)
+    except museos.Parado as e:
+        return f"Esa fuente no se consulta más hoy ({e}). Sigue con lo que tienes."
+    except museos.NoPermitida as e:
+        return f"No se puede traer esa imagen: {e}."
+    except Exception as e:  # una imagen que no existe o no se abre no tumba la obra
+        return f"No se pudo traer la imagen de referencia: {type(e).__name__}."
+    return [bloque, {"type": "text", "text": (
+        "Ejemplar de referencia. Compáralo con la foto 1: ¿es la misma composición?, ¿lleva los mismos cartuchos y la "
+        "misma firma?, ¿dónde tiene el sello del editor y los de censura o fecha, y están en la foto del taller?, ¿tiene "
+        "márgenes que a la del taller le faltan? Dilo en `edicion`.")}]
+
+
+def ejecutar(nombre: str, entrada: dict, imagenes: list[Path], contexto: dict | None = None) -> list[dict] | str:
+    """Una herramienta del taller. Devuelve el contenido del tool_result. `contexto` lleva lo de esta obra
+    que no viene en la llamada: su referencia (para no encontrarse a sí misma en el índice; no sale) y
+    cuántos recortes ha leído ya el OCR."""
     if nombre == "ampliar":
-        return ampliar(imagenes, entrada)
+        return ampliar(imagenes, entrada, contexto)
+    if nombre == "buscar_en_indice":
+        return buscar_en_indice(imagenes, entrada, contexto)
+    if nombre == "ver_referencia":
+        return ver_referencia(entrada)
+    if nombre in ("fuentes_buscar", "fuentes_ficha"):
+        import museos
+
+        try:
+            if nombre == "fuentes_buscar":
+                filas = museos.buscar(str(entrada.get("fuente") or ""), str(entrada.get("consulta") or ""))
+                return json.dumps(filas, ensure_ascii=False) if filas else "Esa fuente no devuelve nada con esos términos."
+            return json.dumps(museos.ficha(str(entrada.get("fuente") or ""), str(entrada.get("id") or "")), ensure_ascii=False)
+        except museos.Parado as e:
+            return f"Esa fuente no se consulta más hoy ({e}). Sigue con lo que tienes."
+        except museos.NoPermitida as e:
+            return f"No se puede consultar: {e}."
+        except Exception as e:  # una ficha que no existe o no se entiende no tumba la obra
+            return f"No se pudo leer esa fuente: {type(e).__name__}."
     if nombre in ("buscar_sello_editor", "buscar_firma"):
         import biblioteca
 
@@ -355,6 +519,7 @@ def catalogar(client, obra: dict, imagenes: list[Path], modelo: str = MODELO_POR
 
     uso = dict(entrada=0, salida=0, cache_escrita=0, cache_leida=0, busquedas=0, lecturas=0)
     usos = {k: 0 for k in TOPES}
+    contexto = {"referencia": obra.get("referencia"), "ocr_lupa": 0}  # no sale: es para el índice y la cuenta del OCR
     vistas: dict[str, str] = {}
     pasos: list[dict] = []
     fase, herramientas, pausas, avisado = "A", HERRAMIENTAS_A, 0, False
@@ -395,8 +560,10 @@ def catalogar(client, obra: dict, imagenes: list[Path], modelo: str = MODELO_POR
             mensajes.append({"role": "user", "content": [{"type": "text", "text": (
                 "Fase B. Ahora tienes búsqueda y lectura web, como mucho ocho búsquedas y ocho lecturas, SOLO para: "
                 + "; ".join(buscar) + ". Prefiere fichas de museos (MFA, Met, Art Institute of Chicago, British Museum, "
-                "Rijksmuseum, Library of Congress, Waseda, Biblioteca Nacional de la Dieta, Japan Search) y marchantes "
-                "serios. Abre las páginas antes de citarlas. Devuelve la ficha completa otra vez, con `buscar_mas` vacío.")}]})
+                "V&A, Rijksmuseum, Library of Congress, Honolulu, Minneapolis, Waseda, Biblioteca Nacional de la Dieta, "
+                "Japan Search), los catálogos en línea de un artista (" + ", ".join(CATALOGOS_DE_ARTISTA) + ") y "
+                "marchantes serios. Abre las páginas antes de citarlas. Devuelve la ficha completa otra vez, con "
+                "`buscar_mas` vacío.")}]})
             continue
         resultados = []
         for b in respuesta.content:
@@ -405,7 +572,7 @@ def catalogar(client, obra: dict, imagenes: list[Path], modelo: str = MODELO_POR
             if b.name in topes and usos[b.name] < topes[b.name]:
                 usos[b.name] += 1
                 pasos.append({"fase": fase, "herramienta": b.name, "entrada": b.input})
-                salida = ejecutar(b.name, b.input, imagenes)
+                salida = ejecutar(b.name, b.input, imagenes, contexto)
                 if isinstance(salida, str) and b.name in ORIGEN:
                     for u in URL.findall(salida):
                         vistas.setdefault(u, ORIGEN[b.name])
@@ -438,6 +605,8 @@ def catalogar(client, obra: dict, imagenes: list[Path], modelo: str = MODELO_POR
         "coste_eur": coste_eur(modelo, uso),
         "pasos": pasos,
         "ocr": bloques,
+        "textos": F.textos(ficha, bloques),   # los cuadros de texto, para quien revisa
+        "edicion": F.edicion(ficha),          # la tirada: lo del modelo y los avisos del código
         "texto": texto,
         "duracion_s": round(time.time() - inicio, 1),
     }

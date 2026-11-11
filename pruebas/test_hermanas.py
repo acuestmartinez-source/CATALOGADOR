@@ -67,8 +67,10 @@ def test_la_hermana_va_corta_sin_ukiyoe_ni_web_y_con_los_topes_reducidos(foto, m
     respuestas = {b["tool_use_id"]: b for b in cliente.enviadas[1]["messages"][-1]["content"]}
     assert respuestas["u1"].get("is_error") and respuestas["c2"].get("is_error") and not respuestas["c1"].get("is_error")
     assert r["usos"]["datar_censor"] == 1 and r["usos"]["ukiyoe_buscar"] == 0
+    # reescrita por especificación (docs/11): la hermana mira en el índice del taller y sigue sin salir fuera
     assert agente.TOPES_HERMANA == {"ampliar": 4, "buscar_sello_editor": 2, "buscar_firma": 2, "datar_censor": 1,
-                                    "ukiyoe_buscar": 0, "ukiyoe_ficha": 0}
+                                    "ukiyoe_buscar": 0, "ukiyoe_ficha": 0, "buscar_en_indice": 3,
+                                    "fuentes_buscar": 0, "fuentes_ficha": 0, "ver_referencia": 0}
     bloque = [b["text"] for b in cliente.enviadas[0]["messages"][0]["content"] if CORTA in (b.get("text") or "")]
     assert len(bloque) == 1 and "Toyohara Kunichika" in bloque[0] and "葉うた虎之巻" in bloque[0]
     assert "no busques en ukiyo-e.org ni en la web" in bloque[0] and "ESTA hoja" in bloque[0]

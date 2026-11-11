@@ -13,6 +13,7 @@ cómo se identificó cada dato, de qué fuente sale y con qué fiabilidad, y las
   metadatos de las fotos; las medidas solo si son un número, y lo que se aprende de una persona,
   saneado).
 - Análisis crítico, fuentes y vínculos SKU: `docs/04_analisis_critico.md`.
+- **Propuesta del 11/11/2026, sin desplegar** (rama `propuesta/fuentes-cuadros-series`): fuentes abiertas con API (Japan Search, Art Institute of Chicago, Cleveland), el ejemplar de referencia a la vista, la tirada, los cuadros de texto, el índice del taller y las series juntas: `docs/11_fuentes_cuadros_series.md`.
 - Historia: `docs/00` (estudio), `01` (piloto), `02` (v2 y decisiones P-11 a P-25), `03` (resultados v2).
 
 ## Puesta en marcha

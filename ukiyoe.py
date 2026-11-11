@@ -136,6 +136,7 @@ def ficha(id_: str) -> dict:
 
     detalles = re.search(r'<p class="row details">.*?href="([^"]+)"', texto, re.S)
     alt = re.search(r'<div class="col-xs-12 col-md-6 imageholder">.*?alt="([^"]*)"', texto, re.S)
+    imagen = re.search(r'imageholder">.*?<img src="(https://data\.ukiyo-e\.org/[^"]+)"', texto, re.S)
     descripcion = re.search(r'description:(null|"(?:[^"\\]|\\.)*")', texto)  # la primera es la de esta estampa
     parecidas = []
     zona = texto.split("Similar Prints", 1)[1] if "Similar Prints" in texto else ""
@@ -157,6 +158,7 @@ def ficha(id_: str) -> dict:
         "descripcion": (json.loads(descripcion.group(1)) or "") if descripcion else "",
         "ficha_original": detalles.group(1) if detalles else "",
         "fuente": re.sub(r"\s*Browse all.*$", "", campo("source")).strip(),
+        "imagen": imagen.group(1) if imagen else "",  # para `ver_referencia`: comparar sellos y cartuchos
         "parecidas": parecidas[:12],
     }
 

@@ -4,7 +4,9 @@
   python censor.py "kiwame"                               → [1790, 1842]
 
 Fuentes: Self & Hirose, Japanese Art Signatures (1987); las páginas del MIT y de Viewing Japanese
-Prints sobre sellos de censor; la misma tabla que lleva el prompt.
+Prints sobre sellos de censor; la misma tabla que lleva el prompt. Las fechas de cada nanushi, solo o
+en pareja, son las de Richard Illing, The Art of Japanese Prints (1980), tal como las publica J. N.
+Chiappa en http://mercury.lcs.mit.edu/~jnc/prints/nanushi.html (leída el 11/11/2026).
 """
 from __future__ import annotations
 
@@ -35,6 +37,40 @@ CENSORES = {  # los nanushi más frecuentes, con los años en que firmaron (apro
     "馬込": ("Magome", 1847, 1853), "高野": ("Takano", 1847, 1852), "田中": ("Tanaka", 1842, 1846), "衣": ("Kinugasa", 1847, 1853),
 }
 
+# Quién es cada lectura (los sellos llevan uno o dos caracteres del apellido; 浜 y 濱, 渡辺 y 渡邊 son el mismo).
+PERSONA = {
+    "高": "Takano", "高野": "Takano", "竹": "Takeguchi", "竹口": "Takeguchi", "村": "Murata", "村田": "Murata",
+    "普": "Fukatsu", "普勝": "Fukatsu", "田中": "Tanaka", "渡": "Watanabe Jiemon", "村松": "Muramatsu",
+    "浜": "Hama", "濱": "Hama", "吉村": "Yoshimura", "衣笠": "Kinugasa", "衣": "Kinugasa", "馬込": "Magome",
+    "渡辺": "Watanabe", "渡邊": "Watanabe", "米良": "Mera", "福": "Fuku", "福島": "Fuku",
+}
+# Un sello solo (1842-1846): la lectura fija los años. 村 es 1843-1845 y 村田, el mismo censor, 1846.
+SOLO = {
+    "高": (1842, 1842), "高野": (1842, 1842), "竹": (1842, 1842), "竹口": (1842, 1842), "村": (1843, 1845),
+    "普": (1843, 1845), "普勝": (1843, 1845), "田中": (1843, 1845), "渡": (1843, 1845), "村田": (1846, 1846),
+    "村松": (1843, 1846), "浜": (1843, 1846), "濱": (1843, 1846), "吉村": (1843, 1846), "衣笠": (1845, 1846),
+    "衣": (1845, 1846),
+}
+# Dos sellos juntos (1847-1853): la pareja fija los años.
+PAREJA = {
+    frozenset(("Murata", "Kinugasa")): (1851, 1853), frozenset(("Murata", "Mera")): (1847, 1850),
+    frozenset(("Muramatsu", "Yoshimura")): (1847, 1848), frozenset(("Muramatsu", "Fuku")): (1849, 1853),
+    frozenset(("Hama", "Kinugasa")): (1847, 1848), frozenset(("Hama", "Magome")): (1849, 1853),
+    frozenset(("Yoshimura", "Kinugasa")): (1849, 1849), frozenset(("Kinugasa", "Watanabe")): (1849, 1850),
+    frozenset(("Watanabe", "Mera")): (1851, 1853),
+}
+CENSURA_DESDE, CENSURA_HASTA = 1790, 1875  # los años en que una estampa de venta pública llevaba sello
+
+
+def sello_esperado(desde: int | None, hasta: int | None) -> bool:
+    """¿Una estampa de venta pública de esos años debería llevar sello de censura o de fecha? Sin años,
+    no se sabe y se contesta que no: quien pregunta decide con lo demás."""
+    if not isinstance(desde, int) and not isinstance(hasta, int):
+        return False
+    d = desde if isinstance(desde, int) else hasta
+    h = hasta if isinstance(hasta, int) else desde
+    return d <= CENSURA_HASTA and h >= CENSURA_DESDE
+
 
 def anos_del_animal(animal: str, desde: int, hasta: int) -> list[int]:
     pos = ANIMALES.get(animal.strip().lower() if not animal.strip() in ANIMALES else animal.strip())
@@ -59,6 +95,21 @@ def datar(tipo: str, animal: str | None = None, mes: int | None = None, censores
             _, d, h = CENSORES[c]
             anos = [a for a in anos if d <= a <= h]
     nota = ""
+    leidos = [str(c).strip() for c in censores or [] if str(c).strip() in PERSONA]
+    quienes = {PERSONA[c] for c in leidos}
+    afinado = None
+    if tipo in ("dos_censores", "dos_censores_fecha") and len(quienes) == 2 and frozenset(quienes) in PAREJA:
+        afinado = PAREJA[frozenset(quienes)]
+        nota = f"pareja {' + '.join(sorted(quienes))}: {afinado[0]}-{afinado[1]} (Illing 1980)"
+    elif tipo == "un_censor" and len(leidos) == 1 and leidos[0] in SOLO:
+        afinado = SOLO[leidos[0]]
+        nota = f"sello solo de {PERSONA[leidos[0]]}: {afinado[0]}-{afinado[1]} (Illing 1980)"
+    if afinado:
+        dentro = [a for a in anos if afinado[0] <= a <= afinado[1]]
+        if dentro:  # si la pareja no cabe en el periodo del tipo de sello, manda el tipo y se dice
+            anos = dentro
+        else:
+            nota += "; no cuadra con el tipo de sello: revisa la lectura"
     if tipo == "combinado" and animal and anos == [a for a in range(1859, 1872) if (a - ANO_RATA) % 12 == ANIMALES.get(animal, -1)]:
         nota = "sello redondo combinado: el animal fija el año dentro de 1859-1871"
     if mes and not 1 <= int(mes) <= 12:

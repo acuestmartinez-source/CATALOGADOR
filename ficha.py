@@ -221,3 +221,130 @@ def contradice(ficha: dict | None, hermana: dict) -> str:
     if dato(ficha, "serie").get("confianza") != "alta":
         return "serie"
     return "buscar_mas" if any(str(x).strip() for x in ficha.get("buscar_mas") or []) else ""
+
+
+# ---------------------------------------------------------------- cuadros de texto (para quien revisa)
+
+TIPOS_TEXTO = ("firma", "sello_artista", "cartucho_serie", "cartucho_titulo", "sello_censor", "sello_fecha",
+               "sello_editor", "grabador", "estampador", "actor", "poema", "inscripcion", "otro")
+MAX_TEXTOS = 16      # los que se aceptan del modelo
+MAX_TEXTOS_OCR = 12  # los que se añaden del OCR que el modelo no recogió
+#: Qué dato de la ficha explica cada tipo de cuadro: su color en la foto y con qué se compara en el índice.
+CAMPO_DE_TIPO = {"firma": "autor", "sello_artista": "autor", "cartucho_serie": "serie", "cartucho_titulo": "titulo",
+                 "sello_censor": "censor", "sello_fecha": "censor", "sello_editor": "editor"}
+
+
+def caja_valida(caja) -> list[int] | None:
+    """Cuatro números con 0 <= x0 < x1 <= 1000 y 0 <= y0 < y1 <= 1000; si no, nada."""
+    if not (isinstance(caja, (list, tuple)) and len(caja) == 4 and all(
+            (isinstance(v, int) and not isinstance(v, bool)) or (isinstance(v, float) and v == v and abs(v) < 1e6)
+            for v in caja)):
+        return None
+    x0, y0, x1, y1 = (int(v) for v in caja)
+    return [x0, y0, x1, y1] if 0 <= x0 < x1 <= 1000 and 0 <= y0 < y1 <= 1000 else None
+
+
+def _linea(texto, largo: int) -> str | None:
+    """Un texto del modelo o del OCR, en una línea, con tope y sin caracteres de control."""
+    if not isinstance(texto, str):
+        return None
+    texto = " ".join("".join(c for c in texto if unicodedata.category(c)[0] != "C" or c in "\n\t").split())
+    return texto[:largo] or None
+
+
+def _tapado(caja: list[int], otras: list[list[int]]) -> bool:
+    """¿Más de la mitad de `caja` cae dentro de alguna de `otras`?"""
+    area = (caja[2] - caja[0]) * (caja[3] - caja[1])
+    for o in otras:
+        ancho, alto = min(caja[2], o[2]) - max(caja[0], o[0]), min(caja[3], o[3]) - max(caja[1], o[1])
+        if ancho > 0 and alto > 0 and ancho * alto * 2 >= area:
+            return True
+    return False
+
+
+def textos(ficha: dict | None, ocr: list[dict] | None = None) -> list[dict]:
+    """Los cuadros de texto de la foto 1, numerados, para quien revisa: primero los que identificó el
+    modelo (qué es, qué dice, cómo se lee y qué significa) y detrás los bloques que leyó el OCR de la
+    NDL y el modelo no recogió, para que no se pierda ninguno. Sin fiarse de ninguno de los dos."""
+    salida: list[dict] = []
+    for t in (ficha or {}).get("textos") or []:
+        if not isinstance(t, dict) or len(salida) >= MAX_TEXTOS:
+            continue
+        caja, lectura = caja_valida(t.get("caja")), _linea(t.get("lectura"), 160)
+        if caja is None or not lectura:
+            continue
+        tipo = t.get("tipo") if t.get("tipo") in TIPOS_TEXTO else "otro"
+        salida.append({"tipo": tipo, "lectura": lectura, "romaji": _linea(t.get("romaji"), 200),
+                       "castellano": _linea(t.get("castellano"), 300), "caja": caja, "origen": "modelo"})
+    ocupadas = [t["caja"] for t in salida]
+    for campo in ESENCIALES:  # las cajas de los seis datos también cuentan como recogidas
+        ocupadas += [c for c in (caja_valida(x) for x in dato(ficha, campo).get("cajas") or []) if c]
+    del_ocr = 0
+    for b in ocr or []:
+        if not isinstance(b, dict) or del_ocr >= MAX_TEXTOS_OCR:
+            continue
+        caja, lectura = caja_valida(b.get("caja")), _linea(b.get("texto"), 160)
+        if caja is None or not lectura or not _cjk(lectura) or lectura.count("□") * 2 > len(lectura):
+            continue
+        if _tapado(caja, ocupadas):
+            continue
+        salida.append({"tipo": "otro", "lectura": lectura, "romaji": None, "castellano": None, "caja": caja, "origen": "ocr"})
+        ocupadas.append(caja)
+        del_ocr += 1
+    for n, t in enumerate(salida, 1):
+        t["n"] = n
+    return salida
+
+
+# ---------------------------------------------------------------- la tirada: ¿de época, posterior o reproducción?
+
+ESTADOS_EDICION = ("edición de época", "edición posterior", "reproducción moderna", "sin determinar")
+HOJAS_DE_VENTA = ("estampa suelta", "hoja de díptico", "hoja de tríptico")  # las que pasaban por la censura
+_SIN_SELLO = re.compile(r"sin sello|ning[uú]n|no visible|no se ve|no hay|ausente|recortad", re.I)
+
+
+def sello_visible(ficha: dict | None, campo: str) -> bool:
+    """¿Se ve en la foto el sello de `campo` (censor o editor)? Lo dice el modelo (`sello_visible`); en las
+    fichas de antes se deduce: hay caja, o hay una lectura con caracteres que no dice «sin sello»."""
+    d = dato(ficha, campo)
+    if isinstance(d.get("sello_visible"), bool):
+        return d["sello_visible"]
+    if any(caja_valida(c) for c in d.get("cajas") or []):
+        return True
+    leido = " ".join(str(d.get(k) or "") for k in ("lectura", "sello"))
+    return bool(_cjk(leido)) and not _SIN_SELLO.search(leido)
+
+
+def edicion(ficha: dict | None) -> dict:
+    """Lo que se sabe de la tirada de este ejemplar. El `estado` y los `indicios` son los del modelo, que ha
+    comparado la foto con el ejemplar de referencia; los `avisos` los pone el código con reglas fijas y no
+    dependen de él. Una estampa de venta pública de 1790 a 1875 llevaba sello de censura o de fecha: si no
+    se ve, o se recortó el margen que lo llevaba, o es una tirada posterior, o es una reproducción."""
+    from censor import sello_esperado
+
+    ficha = ficha or {}
+    e = ficha.get("edicion") if isinstance(ficha.get("edicion"), dict) else {}
+    estado = e.get("estado") if e.get("estado") in ESTADOS_EDICION else "sin determinar"
+    indicios = [x for x in (_linea(i, 240) for i in (e.get("indicios") if isinstance(e.get("indicios"), list) else [])) if x][:6]
+    censor = dato(ficha, "censor")
+    desde, hasta = (v if isinstance(v, int) and not isinstance(v, bool) else None
+                    for v in (censor.get("fecha_desde"), censor.get("fecha_hasta")))
+    avisos = []
+    if ficha.get("tipo_obra") in HOJAS_DE_VENTA:
+        if not sello_visible(ficha, "censor"):
+            if sello_esperado(desde, hasta):
+                avisos.append("no se ve el sello de censura o de fecha que llevaba una estampa de esos años: "
+                              "margen recortado, tirada posterior o reproducción")
+            elif desde is None and hasta is None:
+                avisos.append("sin sello de censura ni fecha: no se puede situar la tirada")
+        if not sello_visible(ficha, "editor"):
+            avisos.append("no se ve el sello del editor")
+    return {"estado": estado, "indicios": indicios, "como": _linea(e.get("como"), 500),
+            "referencia_comparada": _linea(e.get("referencia_comparada"), 300),
+            "avisos": avisos, "revisar": bool(avisos) or estado in ESTADOS_EDICION[1:3]}
+
+
+def resumen_edicion(ed: dict) -> str | None:
+    """Una línea para la ficha del Gestor: el estado, si lo hay, y los avisos."""
+    partes = ([ed["estado"]] if ed.get("estado") and ed["estado"] != "sin determinar" else []) + list(ed.get("avisos") or [])
+    return ("AVISO de tirada: " + "; ".join(partes)) if ed.get("revisar") and partes else None
