@@ -49,6 +49,13 @@ def test_la_confianza_del_modelo_baja_la_fiabilidad_y_nunca_la_sube():
     assert f("ukiyo-e.org misma estampa", "altísima") == "media"
     sin_sello = {"editor": {"nombre": "Fujiokaya Keijirō", "nivel": "otra lámina documentada", "confianza": "baja"}}
     assert F.para_web(sin_sello)["editor"] == "" and F.para_web(sin_sello)["editor_fiabilidad"] == "—"
+    # A las hermanas y a la memoria de series solo pasa lo que se publicaría: tampoco una fecha poco fiable.
+    primera = {"serie": {"japones": "江戸名勝図会", "romaji": "Edo meisho zue", "nivel": "museo misma estampa", "confianza": "alta"},
+               "autor": {"nombre": "Utagawa Hiroshige II", "nivel": "museo misma estampa", "confianza": "alta"},
+               "censor": {"fecha_desde": 1862, "fecha_hasta": 1875, "nivel": "lectura cotejada", "confianza": "baja"}}
+    assert F.hermana_de(primera, "TDP-1")["fecha"] == ""
+    cotejada = {**primera, "censor": {**primera["censor"], "confianza": "media"}}
+    assert F.hermana_de(cotejada, "TDP-1")["fecha"] == "1862–1875"
 
 
 def test_para_web_no_publica_lo_poco_fiable_pero_si_el_titulo_construido():

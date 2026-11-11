@@ -44,9 +44,13 @@ con confianza media sigue en media, como antes. La técnica no cambia: su fiabil
 Descarta: subir con la confianza y contar las fuentes abiertas (`fuentes_verificadas`), que serían otra regla.
 `exportar` y la revisión calculan lo publicable con la regla de hoy desde la ficha, no con el `para_web` que se
 guardó al catalogar (antes mandaba lo guardado, y por eso tampoco le llegaba D-1784 a lo ya catalogado). Lo que
-cambia de paso: un autor de misma estampa con confianza baja ya no sirve de primera hoja, y sus hermanas van por la
-pasada completa (D-1798); un dato copiado en la pasada corta con confianza baja ya no se publica. La memoria de
-series ya escrita no se recalcula: lo que aprendió con la regla vieja se queda hasta que una persona lo quite.
+cambia de paso: un autor con confianza baja, sea cual sea su nivel, ya no sirve de primera hoja, y sus hermanas
+van por la pasada completa (D-1798); un dato copiado en la pasada corta con confianza baja ya no se publica; y a
+las hermanas y a la memoria de series solo pasan el autor, el editor y la fecha que se publicarían.
+Lo ya escrito no se recalcula: ni la memoria de series (la local, `datos/series_conocidas.json`; la del NAS, en el
+volumen `catalogador_datos`), que no tiene orden para limpiarla y guarda de la regla vieja el editor «…, según JAODB»
+de 江戸名勝図会; ni las propuestas ya entregadas al Gestor, que llevan la fiabilidad de su día (`version_catalogador`
+dice siempre «v4») y, si se quieren con la regla de hoy, se vuelven a pedir.
 
 Va a la web (`catalogador.py exportar`, columna por dato y su fiabilidad):
 - autor, serie, editor y fecha **solo con fiabilidad alta o media**; si no, vacíos;

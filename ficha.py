@@ -156,7 +156,7 @@ def hermana_de(ficha: dict | None, referencia: str) -> dict | None:
         "autor": valor(ficha, "autor") if fiabilidad(ficha, "autor") in ("alta", "media") else "",
         "editor": valor(ficha, "editor") if fiabilidad(ficha, "editor") in ("alta", "media") else "",
         "editor_sello": dato(ficha, "editor").get("sello") or "",
-        "fecha": valor(ficha, "censor"),
+        "fecha": valor(ficha, "censor") if fiabilidad(ficha, "censor") in ("alta", "media") else "",
         "fuentes": sorted({*serie.get("fuentes", []), *dato(ficha, "editor").get("fuentes", [])})[:8],
         "vinculadas": [v for v in (ficha or {}).get("vinculadas") or []
                        if isinstance(v, dict) and v.get("relacion") != "misma estampa"][:8],
