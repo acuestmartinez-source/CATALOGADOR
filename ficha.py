@@ -84,12 +84,17 @@ def nivel(ficha: dict | None, campo: str) -> str:
     return _ANTIGUOS.get(n, n)
 
 
+CONFIANZAS = ("baja", "media", "alta")
+
+
 def fiabilidad(ficha: dict | None, campo: str) -> str:
     """alta, media o baja; «—» si no hay dato.
 
-    alta: la misma estampa documentada, o una lectura cotejada con confianza alta.
-    media: lectura cotejada, otra lámina documentada o marchante.
+    El nivel pone el techo y la confianza que da el modelo solo puede bajarla, nunca subirla (D-1842):
+    alta: la misma estampa documentada o una lectura cotejada.
+    media: otra lámina documentada o marchante.
     baja: lectura sin cotejar, título construido, hipótesis o nivel desconocido.
+    Sin confianza dicha (o una que no es alta, media ni baja), como mucho media.
     La técnica se ve en la foto: su fiabilidad es la confianza que da el modelo.
     """
     if not valor(ficha, campo):
@@ -97,12 +102,10 @@ def fiabilidad(ficha: dict | None, campo: str) -> str:
     d = dato(ficha, campo)
     if campo == "tecnica":
         return d.get("confianza") or "media"
-    n, confianza = nivel(ficha, campo), d.get("confianza")
-    if n in NIVELES[:2] or (n == "lectura cotejada" and confianza == "alta"):
-        return "alta"
-    if n in ("lectura cotejada", "otra lámina documentada", "marchante"):
-        return "media"
-    return "baja"
+    n = nivel(ficha, campo)
+    techo = "alta" if n in NIVELES[:3] else "media" if n in NIVELES[3:5] else "baja"
+    confianza = d.get("confianza") if d.get("confianza") in CONFIANZAS else "media"
+    return min(techo, confianza, key=CONFIANZAS.index)
 
 
 def para_web(ficha: dict | None) -> dict:

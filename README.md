@@ -12,6 +12,7 @@ cómo se identificó cada dato, de qué fuente sale y con qué fiabilidad, y las
   0.6.1, D-1840: hacia la API no sale ninguna referencia, ni las pistas de la petición, ni los
   metadatos de las fotos; las medidas solo si son un número, y lo que se aprende de una persona,
   saneado).
+- 0.6.2, D-1842: la confianza del modelo baja la fiabilidad que se publica y nunca la sube (`docs/05_version_depurada.md`).
 - Análisis crítico, fuentes y vínculos SKU: `docs/04_analisis_critico.md`.
 - Historia: `docs/00` (estudio), `01` (piloto), `02` (v2 y decisiones P-11 a P-25), `03` (resultados v2).
 

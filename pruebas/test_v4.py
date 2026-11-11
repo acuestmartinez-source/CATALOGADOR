@@ -30,7 +30,26 @@ def test_fiabilidad_por_nivel_y_confianza():
     assert F.fiabilidad(FICHA, "editor") == "baja"     # lectura sin cotejar
     assert F.fiabilidad(FICHA, "titulo") == "baja"     # construido
     assert F.fiabilidad({"autor": {"nombre": None}}, "autor") == "—"
-    assert F.fiabilidad({"autor": {"nombre": "X", "nivel": "ukiyo-e.org misma estampa", "confianza": "baja"}}, "autor") == "alta"
+
+
+
+def test_la_confianza_del_modelo_baja_la_fiabilidad_y_nunca_la_sube():
+    """D-1842: el nivel pone el techo y la confianza que da el modelo solo puede bajarla."""
+    def f(nivel, confianza=None):
+        d = {"nombre": "X", "nivel": nivel}
+        return F.fiabilidad({"autor": d if confianza is None else {**d, "confianza": confianza}}, "autor")
+
+    assert f("ukiyo-e.org misma estampa", "alta") == "alta"
+    assert f("museo misma estampa", "media") == "media"         # TDP-008117, editor: «lectura probable»
+    assert f("ukiyo-e.org misma estampa", "baja") == "baja"
+    assert f("lectura cotejada", "baja") == "baja"              # TDP-008154, fecha: el periodo del editor
+    assert f("otra lámina documentada", "baja") == "baja"       # TDP-008114, editor: sin sello leído
+    assert f("marchante", "alta") == "media"
+    assert f("lectura sin cotejar", "alta") == "baja"           # TDP-007778, autor: la confianza no sube
+    assert f("ukiyo-e.org misma estampa") == "media"            # sin confianza dicha, como mucho media
+    assert f("ukiyo-e.org misma estampa", "altísima") == "media"
+    sin_sello = {"editor": {"nombre": "Fujiokaya Keijirō", "nivel": "otra lámina documentada", "confianza": "baja"}}
+    assert F.para_web(sin_sello)["editor"] == "" and F.para_web(sin_sello)["editor_fiabilidad"] == "—"
 
 
 def test_para_web_no_publica_lo_poco_fiable_pero_si_el_titulo_construido():

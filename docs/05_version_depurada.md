@@ -24,13 +24,24 @@ Se han quitado «pendiente», «requiere libro», estado, notas y las listas de 
 
 ### Fiabilidad y qué se publica
 
-La fiabilidad de cada dato la calcula el código, no el modelo:
+La fiabilidad de cada dato la calcula el código, no el modelo. El nivel pone el techo:
 
-| Fiabilidad | Cuándo |
+| Techo | Nivel |
 |---|---|
-| alta | misma estampa en ukiyo-e.org o en un museo; o lectura cotejada con confianza alta |
-| media | lectura cotejada; otra lámina documentada; marchante |
+| alta | misma estampa en ukiyo-e.org o en un museo; lectura cotejada |
+| media | otra lámina documentada; marchante |
 | baja | lectura sin cotejar; título construido; hipótesis |
+
+**D-1842 (catalogador-0.6.2, 11/11/2026).** La confianza que da el modelo solo puede **bajar** ese techo, nunca
+subirlo: la fiabilidad es la menor de las dos. Si el modelo no dice su confianza, o dice una que no es alta, media
+ni baja, cuenta como media. Antes la confianza solo servía para subir a alta una lectura cotejada, y en la tanda
+del 11/11 doce datos salían con más fiabilidad de la que el propio modelo les daba: diez de confianza media como
+«alta» y dos de confianza baja como «media», que se publicaban (el editor de TDP-008114, sin ningún sello leído y
+con «según JAODB» dentro; la fecha de TDP-008154, que era el periodo del editor). Con D-1842 los diez salen como
+«media» y los dos no salen. La confianza no sube: una lectura sin cotejar sigue siendo baja aunque el modelo
+diga confianza alta (el autor de TDP-007778), porque lo que no se ha cotejado no se publica. La lectura cotejada
+con confianza media sigue en media, como antes. La técnica no cambia: su fiabilidad es la confianza.
+Descarta: subir con la confianza y contar las fuentes abiertas (`fuentes_verificadas`), que serían otra regla.
 
 Va a la web (`catalogador.py exportar`, columna por dato y su fiabilidad):
 - autor, serie, editor y fecha **solo con fiabilidad alta o media**; si no, vacíos;
