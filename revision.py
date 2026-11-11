@@ -132,7 +132,7 @@ def obra(r: dict, g: dict, carpeta_img: Path) -> str:
             f"<td>{gestor_txt}</td></tr>")
     vinculadas = "".join(f"<li>{e(v.get('relacion'))}: {enlaces([v.get('url')], verificadas)} <span class='peq'>{e(v.get('descripcion'))}</span></li>"
                          for v in fi.get("vinculadas") or fi.get("ejemplares") or [] if isinstance(v, dict) and v.get("url"))
-    web = r.get("para_web") or F.para_web(fi)
+    web = F.para_web(fi)  # la regla de hoy (D-1842)
     publicable = " · ".join(f"<b>{n}</b>: {html.escape(str(web[c]))}" for c, n in CAMPOS if web.get(c))
     t = r.get("tienda") or g.get("tienda") or {}
     tienda = (f"<p class='peq'>Tienda: id {e(t.get('id_woo'))} · SKU <code>{e(t.get('sku'))}</code>"

@@ -32,7 +32,6 @@ def test_fiabilidad_por_nivel_y_confianza():
     assert F.fiabilidad({"autor": {"nombre": None}}, "autor") == "—"
 
 
-
 def test_la_confianza_del_modelo_baja_la_fiabilidad_y_nunca_la_sube():
     """D-1842: el nivel pone el techo y la confianza que da el modelo solo puede bajarla."""
     def f(nivel, confianza=None):
@@ -40,8 +39,8 @@ def test_la_confianza_del_modelo_baja_la_fiabilidad_y_nunca_la_sube():
         return F.fiabilidad({"autor": d if confianza is None else {**d, "confianza": confianza}}, "autor")
 
     assert f("ukiyo-e.org misma estampa", "alta") == "alta"
-    assert f("museo misma estampa", "media") == "media"         # TDP-008117, editor: «lectura probable»
-    assert f("ukiyo-e.org misma estampa", "baja") == "baja"
+    assert f("ukiyo-e.org misma estampa", "media") == "media"   # TDP-008117, editor: «lectura probable»
+    assert f("museo misma estampa", "baja") == "baja"
     assert f("lectura cotejada", "baja") == "baja"              # TDP-008154, fecha: el periodo del editor
     assert f("otra lámina documentada", "baja") == "baja"       # TDP-008114, editor: sin sello leído
     assert f("marchante", "alta") == "media"
@@ -123,6 +122,21 @@ def test_fila_web_solo_cita_fuentes_verificadas():
     assert fila["sku"] == "TDP-toyohara-kunichika-81141" and fila["id_tienda"] == 81141
     assert fila["fuentes"] == "https://ukiyo-e.org/image/etm/0189204030"
     assert fila["editor"] == "" and fila["autor"] == "Toyohara Kunichika"
+
+
+def test_exportar_y_la_revision_recalculan_lo_publicable():
+    """D-1842: lo que se guardó al catalogar se calculó con la regla de entonces; lo que sale se calcula hoy."""
+    import revision
+
+    ficha = {"autor": {"nombre": "Utagawa Hiroshige II", "nivel": "ukiyo-e.org misma estampa", "confianza": "alta"},
+             "editor": {"nombre": "Fujiokaya Keijirō, según JAODB", "nivel": "otra lámina documentada", "confianza": "baja"}}
+    viejo = {**F.para_web(ficha), "editor": "Fujiokaya Keijirō, según JAODB", "editor_fiabilidad": "media"}
+    r = {"referencia": "TDP-1", "ficha": ficha, "para_web": viejo}
+    assert catalogador.fila_web(r)["editor"] == "" and catalogador.fila_web(r)["editor_fiabilidad"] == "—"
+    g = {"imagenes": [], "titulo": None, "artista": None, "serie_literal": None, "editor_literal": None,
+         "anio": None, "anio_literal": None, "tecnica_literal": None, "alto_cm": 36, "ancho_cm": 25}
+    pagina = revision.obra(r, g, Path("."))
+    assert "<b>Autor</b>" in pagina and "<b>Editor</b>" not in pagina
 
 
 def test_texto_ocr_quita_la_basura():

@@ -42,6 +42,11 @@ con «según JAODB» dentro; la fecha de TDP-008154, que era el periodo del edit
 diga confianza alta (el autor de TDP-007778), porque lo que no se ha cotejado no se publica. La lectura cotejada
 con confianza media sigue en media, como antes. La técnica no cambia: su fiabilidad es la confianza.
 Descarta: subir con la confianza y contar las fuentes abiertas (`fuentes_verificadas`), que serían otra regla.
+`exportar` y la revisión calculan lo publicable con la regla de hoy desde la ficha, no con el `para_web` que se
+guardó al catalogar (antes mandaba lo guardado, y por eso tampoco le llegaba D-1784 a lo ya catalogado). Lo que
+cambia de paso: un autor de misma estampa con confianza baja ya no sirve de primera hoja, y sus hermanas van por la
+pasada completa (D-1798); un dato copiado en la pasada corta con confianza baja ya no se publica. La memoria de
+series ya escrita no se recalcula: lo que aprendió con la regla vieja se queda hasta que una persona lo quite.
 
 Va a la web (`catalogador.py exportar`, columna por dato y su fiabilidad):
 - autor, serie, editor y fecha **solo con fiabilidad alta o media**; si no, vacíos;

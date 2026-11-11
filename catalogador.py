@@ -284,7 +284,8 @@ COLUMNAS_WEB = ["referencia", "id_tienda", "sku", "titulo", "titulo_construido",
 
 
 def fila_web(r: dict) -> dict:
-    fi, web = r.get("ficha") or {}, r.get("para_web") or F.para_web(r.get("ficha"))
+    fi = r.get("ficha") or {}
+    web = F.para_web(fi)  # siempre con la regla de hoy, no la guardada al catalogar (D-1842)
     verificadas = r.get("fuentes_verificadas") or {}
     buenas = [u for u, o in verificadas.items() if o in ("abierta", "base documentada")]
     def explicacion(c):
