@@ -110,3 +110,45 @@ def test_catalogar_aplica_la_verificacion_antes_de_lo_publicable(tmp_path, monke
     r = agente.catalogar(_Cliente([_final(_ficha("mfa/sc1"))]), OBRA, [foto])
     assert r["verificacion_visual"]["mfa/sc1"]["veredicto"] == "no"
     assert r["para_web"]["autor_fiabilidad"] == "media" and F.nivel(r["ficha"], "autor") == "otra lámina documentada"
+
+
+def test_la_imagen_solo_se_pide_a_data_ukiyoe_y_nunca_a_uploads(monkeypatch):
+    # la frontera del robots.txt de ukiyo-e.org: fichas e imágenes sí; /upload/, /uploads/ y otros sitios, no
+    import pytest
+
+    pedidas = []
+    monkeypatch.setattr(ukiyoe, "_traer", lambda url, fichero: pedidas.append(url) or b"")
+    for src in ("https://ukiyo-e.org/uploads/x.jpg", "https://data.ukiyo-e.org/uploads/x.jpg",
+                "https://data.ukiyo-e.org.mal.com/x.jpg", "//data.ukiyo-e.org/x.jpg", "https://evil.com/https://data.ukiyo-e.org/x.jpg"):
+        monkeypatch.setattr(ukiyoe, "_pedir", lambda ruta, s=src: f'<div class="col-xs-12 col-md-6 imageholder"><img src="{s}">')
+        with pytest.raises(ValueError):
+            ukiyoe.imagen("mfa/sc1")
+    assert pedidas == []
+    monkeypatch.setattr(ukiyoe, "_pedir", lambda ruta: '<div class="col-xs-12 col-md-6 imageholder"><img src="https://data.ukiyo-e.org/mfa/images/sc1.jpg">')
+    ukiyoe.imagen("mfa/sc1")
+    assert pedidas == ["https://data.ukiyo-e.org/mfa/images/sc1.jpg"]
+
+
+def test_ninguna_ruta_con_dos_puntos_sale_hacia_ukiyoe():
+    import pytest
+
+    with pytest.raises(ValueError):
+        ukiyoe._pedir("/image/../upload/x")
+
+
+def test_un_error_de_opencv_en_una_cita_no_tumba_las_demas(tmp_path, monkeypatch):
+    a = _dibujo(1)
+    nuestra = tmp_path / "foto.jpg"
+    nuestra.write_bytes(_jpeg(a))
+
+    def imagen(id_):
+        if id_ == "mal/1":
+            raise cv2.error("imagen rara")
+        return _jpeg(_otra_foto_de(a))
+
+    monkeypatch.setattr(visual, "imagen_ukiyoe", imagen)
+    f = _ficha("mfa/sc1")
+    f["autor"]["fuentes"].append("https://ukiyo-e.org/image/mal/1")
+    ficha, informe = visual.verificar(f, nuestra)
+    assert informe["mal/1"]["veredicto"] == "sin comprobar" and informe["mfa/sc1"]["veredicto"] == "misma"
+    assert ficha["autor"]["segunda_senal"] == "visual"

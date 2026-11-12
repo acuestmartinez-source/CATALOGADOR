@@ -42,4 +42,6 @@ ukiyo-e.org, 26 pares que sí y 349 que no.
 - automatizar la búsqueda por foto de ukiyo-e.org, que su robots.txt cierra;
 - darle la comparación al agente como herramienta: queda para cuando haga falta.
 
-Pruebas: 129 → 135 (`pruebas/test_visual.py`, con dibujos sintéticos y sin red).
+Revisión (APTO), y sus tres menores cerrados: un error de OpenCV en una cita no tumba las demás, ninguna ruta con «..» sale hacia ukiyo-e.org, y la frontera de `ukiyoe.imagen` (solo data.ukiyo-e.org, nunca /uploads/) tiene su prueba.
+
+Pruebas: 129 → 138 (`pruebas/test_visual.py`, con dibujos sintéticos y sin red).

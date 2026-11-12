@@ -75,7 +75,7 @@ def verificar(ficha: dict | None, foto: Path) -> tuple[dict | None, dict]:
         try:
             p = _puntos(nuestra, _rasgos(imagen_ukiyoe(id_)))
             informe[id_] = {"puntos": p, "veredicto": veredicto(p)}
-        except (ukiyoe.Parado, OSError, ValueError):
+        except (ukiyoe.Parado, OSError, ValueError, cv2.error):  # una imagen rara no tumba las demás
             informe[id_] = {"puntos": None, "veredicto": "sin comprobar"}
     for campo, suyas in citadas.items():
         vistos = [informe[i]["veredicto"] for i in suyas]

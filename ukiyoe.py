@@ -61,7 +61,7 @@ def _guardar(e: dict) -> None:
 
 def _pedir(ruta: str) -> str:
     """GET con caché, espera y tope. Lanza Parado si no se debe preguntar."""
-    if ruta.startswith("/upload"):
+    if ruta.startswith("/upload") or ".." in ruta:
         raise ValueError("/upload/ está prohibido por robots.txt de ukiyo-e.org")
     url = BASE + ruta
     return _traer(url, CACHE / (hashlib.sha256(url.encode()).hexdigest()[:24] + ".html")).decode("utf-8", errors="replace")
