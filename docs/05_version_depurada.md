@@ -32,7 +32,8 @@ La fiabilidad de cada dato la calcula el código, no el modelo. El nivel pone el
 | media | otra lámina documentada; marchante |
 | baja | lectura sin cotejar; título construido; hipótesis |
 
-**D-1842 (catalogador-0.6.2, 11/11/2026).** La confianza que da el modelo solo puede **bajar** ese techo, nunca
+**D-1842 (catalogador-0.6.2, 11/11/2026; ADELANTE de la casa del 12/11/2026, «ADELANTE PARCHE 0.6.2», que ratifica
+la aserción de `pruebas/test_v4.py` reescrita por especificación).** La confianza que da el modelo solo puede **bajar** ese techo, nunca
 subirlo: la fiabilidad es la menor de las dos. Si el modelo no dice su confianza, o dice una que no es alta, media
 ni baja, cuenta como media. Antes la confianza solo servía para subir a alta una lectura cotejada, y en la tanda
 del 11/11 doce datos salían con más fiabilidad de la que el propio modelo les daba: diez de confianza media como
