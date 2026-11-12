@@ -203,7 +203,7 @@ def texto_memoria(series: list[dict]) -> str:
     for m in series:
         s, n = m["serie"], len(m["obras"])
         lineas.append(
-            f"- {s.get('japones')} · {s.get('romaji')} · {s.get('castellano')}: autor {m['autor'] or '—'}, "
+            f"- {' · '.join(x for x in (s.get('japones'), s.get('romaji'), s.get('castellano')) if x)}: autor {m['autor'] or '—'}, "
             f"editor {m['editor'] or '—'} (sello {m['editor_sello'] or '—'}), fecha {m['fecha'] or '—'}; "
             f"ya catalogada en {n} {'hoja' if n == 1 else 'hojas'} de esta serie; fuentes {' '.join(m['fuentes'][:5])}")
     return ("El taller ya ha documentado esta serie en otras obras. Compruébala en la estampa (cartucho, firma, "

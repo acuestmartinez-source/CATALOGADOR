@@ -160,7 +160,9 @@ def test_la_propuesta_guardada_de_otra_peticion_no_presta_sus_kanji(tmp_path, mo
 
 
 def test_ninguna_referencia_vuelve_a_la_api_por_el_saneado():
-    assert servicio.texto_limpio("véase TDP-123456", 120) is None and servicio.texto_limpio("Toyohara Kunichika", 120)
+    for sucio in ("véase TDP-123456", "tdp-123456", "Idn-000001", "TDP 123456", "TDP‑123456", "ＴＤＰ－１２３４５６"):
+        assert servicio.texto_limpio(sucio, 120) is None, sucio
+    assert servicio.texto_limpio("Toyohara Kunichika", 120)
 
 
 def test_la_orden_catalogar_ya_no_lee_pistas():
