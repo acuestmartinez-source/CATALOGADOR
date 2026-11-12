@@ -136,7 +136,7 @@ def catalogar_una(client, o: dict, args) -> float:
             series = F.series_en_texto(F.leer_memoria(MEMORIA), " ".join(b["texto"] for b in agente.ocr_ndl(o["fotos"][0])))
             r = agente.catalogar(client, {"referencia": ref, "alto_cm": o["gestor"]["alto_cm"], "ancho_cm": o["gestor"]["ancho_cm"]},
                                  o["fotos"], modelo=args.modelo, con_web=not args.sin_web, series=series,
-                                 esfuerzo=args.esfuerzo)  # sin pistas: D-991 es una excepción cerrada (D-1843)
+                                 esfuerzo=args.esfuerzo)  # sin pistas: D-991 es una excepción cerrada (D-1844)
             break
         except OSError as e:  # el NAS se corta a veces unos segundos
             if intento == 2:

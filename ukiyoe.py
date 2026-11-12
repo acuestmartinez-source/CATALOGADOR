@@ -7,7 +7,7 @@
 Reglas, que no se tocan:
 - Solo lo que su robots.txt permite: la búsqueda de texto (/search) y las fichas (/image/...).
   /upload/, la búsqueda por imagen, está prohibida en robots.txt y NO se automatiza: la hace
-  una persona en el navegador y deja el enlace en piloto/pistas.csv.
+  una persona en el navegador (y su enlace solo entra por `identificar --pista`, D-1844).
 - Una petición cada ESPERA_MIN a ESPERA_MAX segundos, con azar, también entre hilos y entre
   procesos (la hora de la última petición se guarda en disco).
 - Tope diario TOPE_DIA. Al llegar, no se pregunta más hasta el día siguiente.

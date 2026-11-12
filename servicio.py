@@ -425,8 +425,8 @@ class Servicio:
     @staticmethod
     def _ficha_confirmada(referencia: str, campos: dict, serie: dict, valor: str) -> dict:
         """Lo que una persona confirmó, como ficha para la memoria de series. La memoria se busca por los kanji
-        del cartucho y la serie se acepta en rómaji: los kanji salen de la ficha que se le propuso, solo si la
-        aceptó tal cual o la corrigió a lo mismo. El autor, el editor y la fecha, los que confirmó."""
+        del cartucho y la serie se acepta en rómaji: los kanji salen de la ficha que se le propuso, solo si lo
+        aceptado dice lo mismo que lo propuesto (el fichero va por obra y puede ser de otra petición). El autor, el editor y la fecha, los que confirmó."""
         def confirmado(campo: str) -> str | None:
             c = campos.get(campo)
             return texto_limpio(c.get("valor"), biblioteca.LARGO_NOMBRE) \
@@ -436,12 +436,12 @@ class Servicio:
         try:
             propuesta = json.loads((RAIZ / "resultados" / "servicio" / f"{referencia}.json").read_text(encoding="utf-8"))
             fi = propuesta.get("ficha") if isinstance(propuesta, dict) else None
-            if serie.get("estado") == "aceptado" or F.normalizar(F.valor(fi, "serie")) == F.normalizar(valor):
+            if F.normalizar(valor) and F.normalizar(F.valor(fi, "serie")) == F.normalizar(valor):
                 japones = texto_limpio(F.dato(fi, "serie").get("japones"), 200) or valor
         except (OSError, ValueError):
             pass  # sin la propuesta guardada, como antes: la serie tal como se aceptó
         documentado = {"nivel": "museo misma estampa", "confianza": "alta"}
-        ficha = {"serie": {"japones": japones, "romaji": valor, "castellano": valor, **documentado}}
+        ficha = {"serie": {"japones": japones, "romaji": valor, **documentado}}  # el castellano bueno se queda
         for campo in ("autor", "editor"):
             if nombre := confirmado(campo):
                 ficha[campo] = {"nombre": nombre, **documentado}

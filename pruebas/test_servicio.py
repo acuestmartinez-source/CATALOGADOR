@@ -149,6 +149,25 @@ def test_una_serie_corregida_a_otra_no_se_guarda_con_los_kanji_de_la_propuesta(t
     assert not servicio.MEMORIA.exists() or "葉うた虎之巻" not in servicio.MEMORIA.read_text(encoding="utf-8")
 
 
+def test_la_propuesta_guardada_de_otra_peticion_no_presta_sus_kanji(tmp_path, monkeypatch):
+    # resultados/servicio/<ref>.json va por obra: si es de otra petición con otra serie, sus kanji no valen
+    inter, imagenes = _montar(tmp_path, monkeypatch)
+    _propuesta_guardada(tmp_path, "TDP-008194", {"japones": "東海道五十三次", "romaji": "Tôkaidô gojûsan tsugi",
+                                                 "nivel": "construido", "confianza": "baja"})
+    _aceptar_serie(inter, "aceptado", "Hauta tora no maki")
+    servicio.Servicio(inter, imagenes).aprender()
+    assert not servicio.MEMORIA.exists() or "東海道" not in servicio.MEMORIA.read_text(encoding="utf-8")
+
+
+def test_ninguna_referencia_vuelve_a_la_api_por_el_saneado():
+    assert servicio.texto_limpio("véase TDP-123456", 120) is None and servicio.texto_limpio("Toyohara Kunichika", 120)
+
+
+def test_la_orden_catalogar_ya_no_lee_pistas():
+    import catalogador
+    assert not hasattr(catalogador, "leer_pistas") and not hasattr(catalogador, "PISTAS")
+
+
 def test_hora_limite_aplaza_sin_gastar(tmp_path, monkeypatch):
     inter, imagenes = _montar(tmp_path, monkeypatch)
     s = servicio.Servicio(inter, imagenes, hasta="00:00")

@@ -152,8 +152,10 @@ def anotar(tipo: str, referencia: str, lectura: str, nombre: str, caja: list[int
 
 def texto_limpio(s, largo: int) -> str | None:
     """El saneado de D-1787 para un texto que vuelve a la API: los espacios juntados, de 1 a `largo`
-    caracteres y sin caracteres de control ni de formato. Si no vale, nada."""
+    caracteres, sin caracteres de control ni de formato y sin referencias. Si no vale, nada."""
     s = " ".join(s.split()) if isinstance(s, str) else ""
+    if re.search(r"TDP-\d|idn-\d", s):  # D-991: ninguna referencia vuelve a la API
+        return None
     return s if 0 < len(s) <= largo and not any(unicodedata.category(c)[0] == "C" for c in s) else None
 
 

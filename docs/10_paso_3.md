@@ -350,6 +350,13 @@ Desde la 0.6.3, `servicio._aprender_una`:
 - y lo que confirmó una persona pisa lo que la memoria había aprendido de una máquina
   (`ficha.recordar_serie(..., pisar=True)`); lo de la máquina sigue rellenando solo huecos.
 Descarta: pedir al Gestor que mande los kanji (cambiaría el contrato `aceptadas.jsonl`).
+Ronda 2 de la revisión (NO APTO): el fichero de la propuesta va por obra y puede ser de otra petición; ahora
+los kanji solo se toman si lo aceptado dice lo mismo que lo propuesto (normalizado y no vacío), también cuando
+la persona «aceptó». El castellano bueno de la memoria ya no se pisa con el rómaji. Lo que vuelve a la API sigue
+D-1768 (el nombre del artista y del editor confirmados, saneados); **la fecha confirmada (años) que se guarda con
+la serie no está en la lista de D-1768: la casa decide con el ADELANTE si sale** (es inocua: solo años).
+Y el saneado (`biblioteca.texto_limpio`) rechaza ahora cualquier texto con una referencia `TDP-` o `idn-`,
+para todos los que lo usan.
 
 ## D-1844 · Lo que queda de D-991: la biblioteca se sanea al salir y la orden catalogar ya no lee pistas
 
@@ -363,4 +370,4 @@ Descarta: pedir al Gestor que mande los kanji (cambiaría el contrato `aceptadas
   a `catalogar_una` que pasaban unas pistas vacías (`test_paso_2.py` 275 y 297, `test_d1840_nada_de_referencias.py` 96)
   y el doble que sustituía a `leer_pistas` (`test_paso_2.py` 274), que ya no existe.
 
-Pruebas: 123 → 126.
+Pruebas: 123 → 129.

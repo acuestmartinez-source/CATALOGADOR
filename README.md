@@ -69,5 +69,6 @@ Una estampa suelta, con tus fotos (y, si la encontraste a mano en ukiyo-e.org, s
 ```
 
 La búsqueda por imagen de ukiyo-e.org la hace una persona (su robots.txt la prohíbe a los
-programas); el enlace del resultado se deja en `piloto/pistas.csv` (`referencia;url;nota`).
+programas). Su enlace solo se pasa con `identificar --pista`, fuera del Gestor: `catalogar` no lee
+pistas desde la 0.6.3 (D-1844, D-991).
 `resultados/` y `datos/` están fuera de git.
