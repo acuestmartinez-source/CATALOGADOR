@@ -189,11 +189,7 @@ def serie_conocida(p: dict) -> str | None:
     return texto_limpio(p.get("serie_conocida"), 200)
 
 
-def texto_limpio(s, largo: int) -> str | None:
-    """El saneado de D-1787 para un texto del Gestor que vuelve a la API: los espacios juntados, de 1 a
-    `largo` caracteres y sin caracteres de control ni de formato. Si no vale, nada."""
-    s = " ".join(s.split()) if isinstance(s, str) else ""
-    return s if 0 < len(s) <= largo and not any(unicodedata.category(c)[0] == "C" for c in s) else None
+texto_limpio = biblioteca.texto_limpio  # el saneado de D-1787, uno solo para todo
 
 
 def _sin_fecha(texto: str) -> str | None:
@@ -418,13 +414,41 @@ class Servicio:
         foto = next((self.imagenes / r for r in (p.get("imagenes") if peticion_valida(p) else None) or []
                      if _existe(self.imagenes / r)), None)
         biblioteca.desde_aceptada(a, foto)
-        serie = (a.get("campos") or {}).get("serie") or {}
+        campos = a.get("campos") or {}
+        serie = campos.get("serie") or {}
         valor = serie_conocida({"serie_conocida": serie.get("valor")})  # vuelve a la API: el saneado de D-1787
         if serie.get("estado") in ("aceptado", "corregido") and valor:
-            F.recordar_serie(MEMORIA, {"serie": {"japones": valor, "castellano": valor,
-                                                 "nivel": "museo misma estampa", "confianza": "alta"}},
-                             a["referencia"])
+            F.recordar_serie(MEMORIA, self._ficha_confirmada(a["referencia"], campos, serie, valor), a["referencia"],
+                             pisar=True)
         return True
+
+    @staticmethod
+    def _ficha_confirmada(referencia: str, campos: dict, serie: dict, valor: str) -> dict:
+        """Lo que una persona confirmó, como ficha para la memoria de series. La memoria se busca por los kanji
+        del cartucho y la serie se acepta en rómaji: los kanji salen de la ficha que se le propuso, solo si la
+        aceptó tal cual o la corrigió a lo mismo. El autor, el editor y la fecha, los que confirmó."""
+        def confirmado(campo: str) -> str | None:
+            c = campos.get(campo)
+            return texto_limpio(c.get("valor"), biblioteca.LARGO_NOMBRE) \
+                if isinstance(c, dict) and c.get("estado") in ("aceptado", "corregido") else None
+
+        japones = valor
+        try:
+            propuesta = json.loads((RAIZ / "resultados" / "servicio" / f"{referencia}.json").read_text(encoding="utf-8"))
+            fi = propuesta.get("ficha") if isinstance(propuesta, dict) else None
+            if serie.get("estado") == "aceptado" or F.normalizar(F.valor(fi, "serie")) == F.normalizar(valor):
+                japones = texto_limpio(F.dato(fi, "serie").get("japones"), 200) or valor
+        except (OSError, ValueError):
+            pass  # sin la propuesta guardada, como antes: la serie tal como se aceptó
+        documentado = {"nivel": "museo misma estampa", "confianza": "alta"}
+        ficha = {"serie": {"japones": japones, "romaji": valor, "castellano": valor, **documentado}}
+        for campo in ("autor", "editor"):
+            if nombre := confirmado(campo):
+                ficha[campo] = {"nombre": nombre, **documentado}
+        anos = [int(x) for x in re.findall(r"\b1[5-9]\d\d\b", confirmado("censor") or "")]
+        if anos:
+            ficha["censor"] = {"fecha_desde": min(anos), "fecha_hasta": max(anos), **documentado}
+        return ficha
 
     def corregir_biblioteca(self) -> int:
         """Lo que una persona pidió en el Gestor con una entrada de la biblioteca: cada `id_correccion`

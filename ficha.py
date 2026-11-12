@@ -164,9 +164,10 @@ def hermana_de(ficha: dict | None, referencia: str) -> dict | None:
     }
 
 
-def recordar_serie(ruta: Path, ficha: dict | None, referencia: str) -> dict | None:
+def recordar_serie(ruta: Path, ficha: dict | None, referencia: str, pisar: bool = False) -> dict | None:
     """Guarda la serie (o el libro) de una ficha si está bien documentada, para sus hermanas. Se reconoce
-    por su título japonés en el OCR, así que sin él (3 caracteres CJK o más) no se guarda."""
+    por su título japonés en el OCR, así que sin él (3 caracteres CJK o más) no se guarda. Lo que sale de una
+    máquina solo rellena huecos; con `pisar`, lo que confirmó una persona manda sobre lo que había."""
     entrada = hermana_de(ficha, referencia)
     if entrada is None or len(entrada["clave"]) < 3:
         return None
@@ -177,7 +178,9 @@ def recordar_serie(ruta: Path, ficha: dict | None, referencia: str) -> dict | No
         if previa:
             previa["obras"] = sorted({*previa["obras"], referencia})
             for k in ("autor", "editor", "editor_sello", "fecha"):
-                previa[k] = previa[k] or entrada[k]
+                previa[k] = (entrada[k] or previa[k]) if pisar else (previa[k] or entrada[k])
+            if pisar:
+                previa["serie"] = {**previa.get("serie", {}), **{k: v for k, v in entrada["serie"].items() if v}}
             previa["fuentes"] = sorted({*previa["fuentes"], *entrada["fuentes"]})[:12]
         else:
             memoria.append(entrada)

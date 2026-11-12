@@ -107,6 +107,48 @@ def test_el_servicio_aprende_de_lo_aceptado(tmp_path, monkeypatch):
     assert biblioteca.buscar("firma", "国周画")[0]["referencia"] == "TDP-008194"  # 国 moderno casa con 國
 
 
+def _propuesta_guardada(tmp_path, referencia, serie):
+    carpeta = tmp_path / "resultados" / "servicio"
+    carpeta.mkdir(parents=True, exist_ok=True)
+    (carpeta / f"{referencia}.json").write_text(json.dumps({"ficha": {"serie": serie}}, ensure_ascii=False), encoding="utf-8")
+
+
+def _aceptar_serie(inter, estado, valor):
+    aceptadas = inter / "para_catalogador" / "aceptadas.jsonl"
+    cabecera, linea = aceptadas.read_text(encoding="utf-8").splitlines()
+    a = json.loads(linea)
+    a["campos"]["serie"] = {"estado": estado, "valor": valor}
+    a["campos"]["censor"] = {"estado": "aceptado", "valor": "1862–1863"}
+    aceptadas.write_text(f"{cabecera}\n{json.dumps(a, ensure_ascii=False)}\n", encoding="utf-8")
+
+
+def test_la_serie_aceptada_en_romaji_se_aprende_con_sus_kanji_y_lo_que_confirmo_la_persona(tmp_path, monkeypatch):
+    # La serie se acepta en rómaji y la memoria se busca por kanji: los kanji salen de la ficha que se propuso
+    inter, imagenes = _montar(tmp_path, monkeypatch)
+    _propuesta_guardada(tmp_path, "TDP-008194", {"japones": "葉うた虎之巻", "romaji": "Hauta tora no maki",
+                                                 "nivel": "construido", "confianza": "baja"})
+    servicio.MEMORIA.write_text(json.dumps([{"clave": "葉うた虎之巻", "serie": {"japones": "葉うた虎之巻"}, "autor": "",
+                                             "editor": "Ōmiya Kyūjirō", "editor_sello": "", "fecha": "", "fuentes": [],
+                                             "vinculadas": [], "obras": ["TDP-008133"]}], ensure_ascii=False), encoding="utf-8")
+    _aceptar_serie(inter, "aceptado", "Hauta tora no maki")
+    servicio.Servicio(inter, imagenes).aprender()
+    memoria = json.loads(servicio.MEMORIA.read_text(encoding="utf-8"))
+    assert len(memoria) == 1
+    e = memoria[0]
+    assert e["serie"]["romaji"] == "Hauta tora no maki" and e["obras"] == ["TDP-008133", "TDP-008194"]
+    # lo que confirmó una persona manda sobre lo que se aprendió de una máquina
+    assert (e["autor"], e["editor"], e["fecha"]) == ("Toyohara Kunichika", "Echizenya Kajū", "1862–1863")
+
+
+def test_una_serie_corregida_a_otra_no_se_guarda_con_los_kanji_de_la_propuesta(tmp_path, monkeypatch):
+    inter, imagenes = _montar(tmp_path, monkeypatch)
+    _propuesta_guardada(tmp_path, "TDP-008194", {"japones": "葉うた虎之巻", "romaji": "Hauta tora no maki",
+                                                 "nivel": "construido", "confianza": "baja"})
+    _aceptar_serie(inter, "corregido", "Edo meishô zue")
+    servicio.Servicio(inter, imagenes).aprender()
+    assert not servicio.MEMORIA.exists() or "葉うた虎之巻" not in servicio.MEMORIA.read_text(encoding="utf-8")
+
+
 def test_hora_limite_aplaza_sin_gastar(tmp_path, monkeypatch):
     inter, imagenes = _montar(tmp_path, monkeypatch)
     s = servicio.Servicio(inter, imagenes, hasta="00:00")

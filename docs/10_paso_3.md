@@ -337,3 +337,30 @@ control en la biblioteca. Las pruebas pasan de 112 a 117 en la ronda 2 y a 121 e
 
 **Despliegue.** Igual que la 0.6.0 (arriba), con `catalogador-0.6.1`. Los volúmenes no se tocan:
 la memoria de series que ya hay sirve tal cual.
+
+## D-1843 · La memoria de series aprende lo que confirma una persona (catalogador-0.6.3, 12/11/2026)
+
+La serie se acepta en el Gestor en rómaji («Hauta tora no maki») y la memoria de series se busca por los kanji
+del cartucho que lee el OCR. Por eso, hasta ahora, una serie confirmada por una persona no se guardaba nunca
+(tenía menos de tres caracteres CJK), y la que se guardaba llevaba el autor, el editor y la fecha vacíos.
+Desde la 0.6.3, `servicio._aprender_una`:
+- toma los kanji de la ficha que se propuso (`resultados/servicio/<referencia>.json`), pero solo si la persona
+  aceptó la serie tal cual o la corrigió a lo mismo; si la corrigió a otra serie, se guarda como antes;
+- guarda con la serie el autor, el editor y la fecha que la persona aceptó o corrigió;
+- y lo que confirmó una persona pisa lo que la memoria había aprendido de una máquina
+  (`ficha.recordar_serie(..., pisar=True)`); lo de la máquina sigue rellenando solo huecos.
+Descarta: pedir al Gestor que mande los kanji (cambiaría el contrato `aceptadas.jsonl`).
+
+## D-1844 · Lo que queda de D-991: la biblioteca se sanea al salir y la orden catalogar ya no lee pistas
+
+- `biblioteca.buscar` sanea la lectura y el nombre al salir (D-1768: el saneado de D-1787, que ahora vive en
+  `biblioteca.texto_limpio` y usa también el servicio). Así sale limpio también lo que entró antes de la 0.6.1
+  y lo corregido; una fila que no vale no sale.
+- La orden `catalogar` ya no lee `piloto/pistas.csv` ni manda pistas (orquestador, 10/11: «pistas.csv se
+  cierra en el próximo parche»). `identificar`, con las fotos de una persona y fuera del Gestor, sigue
+  aceptando `--pista`.
+- Reescritas por especificación, para que las ratifique la casa con el ADELANTE: tres llamadas de las pruebas
+  a `catalogar_una` que pasaban unas pistas vacías (`test_paso_2.py` 275 y 297, `test_d1840_nada_de_referencias.py` 96)
+  y el doble que sustituía a `leer_pistas` (`test_paso_2.py` 274), que ya no existe.
+
+Pruebas: 123 → 126.

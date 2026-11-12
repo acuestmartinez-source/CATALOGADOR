@@ -13,6 +13,7 @@ cómo se identificó cada dato, de qué fuente sale y con qué fiabilidad, y las
   metadatos de las fotos; las medidas solo si son un número, y lo que se aprende de una persona,
   saneado).
 - 0.6.2, D-1842: la confianza del modelo baja la fiabilidad que se publica y nunca la sube (`docs/05_version_depurada.md`).
+- 0.6.3, D-1843 y D-1844: la memoria de series aprende lo que confirma una persona; la biblioteca sale saneada y `catalogar` ya no lee pistas (`docs/10_paso_3.md`).
 - Análisis crítico, fuentes y vínculos SKU: `docs/04_analisis_critico.md`.
 - Historia: `docs/00` (estudio), `01` (piloto), `02` (v2 y decisiones P-11 a P-25), `03` (resultados v2).
 

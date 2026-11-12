@@ -93,7 +93,7 @@ def test_la_orden_catalogar_tampoco_manda_las_obras_de_la_memoria(tmp_path, monk
     o = {"referencia": "TDP-008133", "destino": tmp_path / "TDP-008133.json", "fotos": [foto],
          "gestor": {"alto_cm": 35.2, "ancho_cm": 24.1, "tienda": {}}}
     args = SimpleNamespace(modelo=agente.MODELO_POR_DEFECTO, sin_web=False, esfuerzo=agente.ESFUERZO)
-    assert catalogador.catalogar_una(cliente, o, args, {}) > 0
+    assert catalogador.catalogar_una(cliente, o, args) > 0
     assert any("ya catalogada en" in t and EDITOR in t and FUENTE in t for t in _textos(cliente))
     _sin_nada_de_la_peticion(cliente)
 
@@ -105,6 +105,16 @@ def test_la_biblioteca_del_taller_no_devuelve_al_modelo_la_referencia(tmp_path, 
     for herramienta, consulta in (("buscar_firma", "國周画"), ("buscar_sello_editor", "越嘉")):
         salida = agente.ejecutar(herramienta, {"consulta": consulta}, [])
         assert json.loads(salida)["confirmadas_por_el_taller"] and not REFERENCIAS.search(salida), salida
+
+
+def test_la_biblioteca_se_sanea_tambien_al_salir(tmp_path, monkeypatch):
+    # D-1768: la lectura y el nombre salen hacia la API saneados, también lo que entró antes de la 0.6.1 o por una corrección
+    inter, imagenes = _montar(tmp_path, monkeypatch)
+    servicio.Servicio(inter, imagenes).vuelta()
+    tabla = biblioteca.TABLA["firma"]
+    tabla.write_text(tabla.read_text(encoding="utf-8").replace("Toyohara Kunichika", "Toyohara\\u0007Kunichika"), encoding="utf-8")
+    salida = agente.ejecutar("buscar_firma", {"consulta": "國周画"}, [])
+    assert "\u0007" not in salida and not json.loads(salida)["confirmadas_por_el_taller"], salida
 
 
 def test_la_serie_aceptada_pasa_por_el_saneado_antes_de_la_memoria(tmp_path, monkeypatch):

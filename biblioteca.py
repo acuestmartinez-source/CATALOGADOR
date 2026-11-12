@@ -150,6 +150,13 @@ def anotar(tipo: str, referencia: str, lectura: str, nombre: str, caja: list[int
     return fila
 
 
+def texto_limpio(s, largo: int) -> str | None:
+    """El saneado de D-1787 para un texto que vuelve a la API: los espacios juntados, de 1 a `largo`
+    caracteres y sin caracteres de control ni de formato. Si no vale, nada."""
+    s = " ".join(s.split()) if isinstance(s, str) else ""
+    return s if 0 < len(s) <= largo and not any(unicodedata.category(c)[0] == "C" for c in s) else None
+
+
 def lectura_valida(texto) -> bool:
     """La regla de una corrección (D-1221, en el contrato): de 1 a 40 caracteres sin los espacios de los
     bordes, y al menos una letra `Lo` por encima de U+2E80 tras NFKC y la tabla de kanji antiguos, o «□»."""
@@ -230,8 +237,10 @@ def buscar(tipo: str, consulta: str, limite: int = 6) -> list[dict]:
         return []
     salida = []
     for fila in filas:
-        if not (isinstance(fila.get("lectura"), str) and isinstance(fila.get("nombre"), str)):
-            continue  # una fila vieja con una lectura o un nombre que no son texto no tumba la búsqueda
+        lectura, nombre = texto_limpio(fila.get("lectura"), LARGO_LECTURA), texto_limpio(fila.get("nombre"), LARGO_NOMBRE)
+        if not (lectura and nombre):
+            continue  # D-1768: sale saneado también lo anterior a la 0.6.1 y lo corregido; lo que no vale no sale
+        fila = {**fila, "lectura": lectura, "nombre": nombre}
         propios = _cjk(fila["lectura"])
         if not pedidos or not propios:
             continue

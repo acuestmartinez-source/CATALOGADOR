@@ -33,7 +33,6 @@ RAIZ = Path(__file__).resolve().parent
 RESULTADOS = RAIZ / "resultados"
 CARPETA = "v4"  # resultados/v4/<REF>.json
 MUESTRA = RAIZ / "piloto" / "muestra.csv"
-PISTAS = RAIZ / "piloto" / "pistas.csv"
 MEMORIA = RAIZ / "datos" / "series_conocidas.json"
 SEMILLA, TAMANO_MUESTRA = 2026, 50
 
@@ -93,18 +92,6 @@ def leer_lista(ruta: Path) -> list[str]:
         return [fila["referencia"].strip() for fila in csv.DictReader(f) if fila.get("referencia", "").strip()]
 
 
-def leer_pistas() -> dict[str, list[dict]]:
-    """referencia;url;nota — lo que una persona encontró a mano (la búsqueda por imagen de ukiyo-e.org)."""
-    if not PISTAS.exists():
-        return {}
-    pistas: dict[str, list[dict]] = {}
-    with PISTAS.open(encoding="utf-8-sig") as f:
-        for fila in csv.DictReader(f, delimiter=";"):
-            if fila.get("referencia") and fila.get("url"):
-                pistas.setdefault(fila["referencia"].strip(), []).append(
-                    {"url": fila["url"].strip(), "nota": (fila.get("nota") or "").strip()})
-    return pistas
-
 
 # ---------------------------------------------------------------- catalogar
 
@@ -141,7 +128,7 @@ def horario(desde: str | None, hasta: str | None) -> str:
     return f"fuera del horario {desde or '00:00'}–{hasta or '24:00'}"
 
 
-def catalogar_una(client, o: dict, args, pistas: dict) -> float:
+def catalogar_una(client, o: dict, args) -> float:
     """Una obra con sus reintentos. Devuelve el coste, o 0 si falló (no se guarda y se reintenta otro día)."""
     ref, destino = o["referencia"], o["destino"]
     for intento in range(3):
@@ -149,7 +136,7 @@ def catalogar_una(client, o: dict, args, pistas: dict) -> float:
             series = F.series_en_texto(F.leer_memoria(MEMORIA), " ".join(b["texto"] for b in agente.ocr_ndl(o["fotos"][0])))
             r = agente.catalogar(client, {"referencia": ref, "alto_cm": o["gestor"]["alto_cm"], "ancho_cm": o["gestor"]["ancho_cm"]},
                                  o["fotos"], modelo=args.modelo, con_web=not args.sin_web, series=series,
-                                 pistas=pistas.get(ref), esfuerzo=args.esfuerzo)
+                                 esfuerzo=args.esfuerzo)  # sin pistas: D-991 es una excepción cerrada (D-1843)
             break
         except OSError as e:  # el NAS se corta a veces unos segundos
             if intento == 2:
@@ -202,7 +189,7 @@ def orden_catalogar(args) -> None:
               f"Estimado: {0.30 * len(obras):.0f}–{0.55 * len(obras):.0f} € y {len(obras) * 4 // max(1, args.paralelo)} "
               f"min (ukiyo-e.org va despacio a propósito).")
         return
-    client, pistas = agente.cliente(), leer_pistas()
+    client = agente.cliente()
 
     def un_grupo(grupo: list[dict]) -> float:
         total = 0.0
@@ -210,7 +197,7 @@ def orden_catalogar(args) -> None:
             if fuera_de_hora(args.hasta, desde=args.desde):
                 print(f"{o['referencia']}: {horario(args.desde, args.hasta)}; queda para otro día", flush=True)
                 continue
-            total += catalogar_una(client, o, args, pistas)
+            total += catalogar_una(client, o, args)
         return total
 
     with ThreadPoolExecutor(max_workers=args.paralelo) as hilos:

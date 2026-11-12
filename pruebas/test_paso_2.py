@@ -271,9 +271,8 @@ def _orden_catalogar_a_las_cinco(tmp_path, monkeypatch, desde):
     monkeypatch.setattr(catalogador, "abrir_gestor", lambda: None)
     monkeypatch.setattr(catalogador, "carpeta_imagenes", lambda: tmp_path)
     monkeypatch.setattr(catalogador, "gestor", lambda con, ref: {"imagenes": ["foto.jpg"], "serie_literal": ""})
-    monkeypatch.setattr(catalogador, "leer_pistas", dict)
     monkeypatch.setattr(agente, "cliente", lambda: None)
-    monkeypatch.setattr(catalogador, "catalogar_una", lambda client, o, args, pistas: hechas.append(o["referencia"]) or 0.0)
+    monkeypatch.setattr(catalogador, "catalogar_una", lambda client, o, args: hechas.append(o["referencia"]) or 0.0)
     args = SimpleNamespace(solo=["TDP-000001"], lista=None, repetir=False, en_seco=False, paralelo=1,
                            desde=desde, hasta="13:00")
     catalogador.orden_catalogar(args)
@@ -295,5 +294,5 @@ def test_catalogar_por_linea_de_ordenes_no_manda_la_serie_conocida(tmp_path, mon
     o = {"referencia": "TDP-000001", "destino": tmp_path / "TDP-000001.json", "fotos": [tmp_path / "foto.jpg"],
          "gestor": {"alto_cm": 35, "ancho_cm": 24, "serie_literal": "Edo meishô zue", "tienda": {}}}
     args = SimpleNamespace(modelo="m", sin_web=True, esfuerzo="low")
-    catalogador.catalogar_una(None, o, args, {})
+    catalogador.catalogar_una(None, o, args)
     assert llamadas and "serie_conocida" not in llamadas[0] and llamadas[0]["series"] == []
