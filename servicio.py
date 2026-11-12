@@ -426,7 +426,7 @@ class Servicio:
     def _ficha_confirmada(referencia: str, campos: dict, serie: dict, valor: str) -> dict:
         """Lo que una persona confirmó, como ficha para la memoria de series. La memoria se busca por los kanji
         del cartucho y la serie se acepta en rómaji: los kanji salen de la ficha que se le propuso, solo si lo
-        aceptado dice lo mismo que lo propuesto (el fichero va por obra y puede ser de otra petición). El autor, el editor y la fecha, los que confirmó."""
+        aceptado dice lo mismo que lo propuesto (el fichero va por obra y puede ser de otra petición). El autor y el editor, los que confirmó."""
         def confirmado(campo: str) -> str | None:
             c = campos.get(campo)
             return texto_limpio(c.get("valor"), biblioteca.LARGO_NOMBRE) \
@@ -445,10 +445,7 @@ class Servicio:
         for campo in ("autor", "editor"):
             if nombre := confirmado(campo):
                 ficha[campo] = {"nombre": nombre, **documentado}
-        anos = [int(x) for x in re.findall(r"\b1[5-9]\d\d\b", confirmado("censor") or "")]
-        if anos:
-            ficha["censor"] = {"fecha_desde": min(anos), "fecha_hasta": max(anos), **documentado}
-        return ficha
+        return ficha  # la fecha confirmada no: no está en la lista de D-1768 (ADELANTE del 12/11 sin firmarla)
 
     def corregir_biblioteca(self) -> int:
         """Lo que una persona pidió en el Gestor con una entrada de la biblioteca: cada `id_correccion`

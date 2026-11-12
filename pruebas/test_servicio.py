@@ -137,7 +137,8 @@ def test_la_serie_aceptada_en_romaji_se_aprende_con_sus_kanji_y_lo_que_confirmo_
     e = memoria[0]
     assert e["serie"]["romaji"] == "Hauta tora no maki" and e["obras"] == ["TDP-008133", "TDP-008194"]
     # lo que confirmó una persona manda sobre lo que se aprendió de una máquina
-    assert (e["autor"], e["editor"], e["fecha"]) == ("Toyohara Kunichika", "Echizenya Kajū", "1862–1863")
+    assert (e["autor"], e["editor"]) == ("Toyohara Kunichika", "Echizenya Kajū")
+    assert e["fecha"] == ""  # la fecha confirmada no sale hacia la API: no está en D-1768
 
 
 def test_una_serie_corregida_a_otra_no_se_guarda_con_los_kanji_de_la_propuesta(tmp_path, monkeypatch):
