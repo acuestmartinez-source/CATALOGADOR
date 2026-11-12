@@ -64,9 +64,23 @@ def _pedir(ruta: str) -> str:
     if ruta.startswith("/upload"):
         raise ValueError("/upload/ está prohibido por robots.txt de ukiyo-e.org")
     url = BASE + ruta
-    fichero = CACHE / (hashlib.sha256(url.encode()).hexdigest()[:24] + ".html")
+    return _traer(url, CACHE / (hashlib.sha256(url.encode()).hexdigest()[:24] + ".html")).decode("utf-8", errors="replace")
+
+
+def imagen(id_: str) -> bytes:
+    """La imagen de una ficha (D-1845), de data.ukiyo-e.org: su robots.txt solo cierra /uploads/. Con el mismo
+    freno, el mismo tope y la caché para siempre de todo lo demás."""
+    id_ = id_.removeprefix(f"{BASE}/image/").removeprefix("/image/").strip("/")
+    m = re.search(r'<div class="col-xs-12 col-md-6 imageholder">.*?<img[^>]+src="([^"]+)"', _pedir(f"/image/{id_}"), re.S)
+    url = m.group(1) if m else ""
+    if not url.startswith("https://data.ukiyo-e.org/") or "/uploads/" in url:
+        raise ValueError(f"la ficha {id_} no trae una imagen de data.ukiyo-e.org")
+    return _traer(url, CACHE / "imagenes" / (hashlib.sha256(url.encode()).hexdigest()[:24] + Path(url).suffix))
+
+
+def _traer(url: str, fichero: Path) -> bytes:
     if fichero.exists():
-        return fichero.read_text(encoding="utf-8")
+        return fichero.read_bytes()
     with _cerrojo:  # una petición a la vez en todo el proceso
         e = _estado()
         if e.get("parado"):
@@ -79,7 +93,7 @@ def _pedir(ruta: str) -> str:
         pedido = urllib.request.Request(url, headers={"User-Agent": AGENTE, "Accept-Language": "en"})
         try:
             with urllib.request.urlopen(pedido, timeout=60) as r:
-                texto = r.read().decode("utf-8", errors="replace")
+                datos = r.read()
         except urllib.error.HTTPError as err:
             e["ultima"] = time.time()
             if err.code in (403, 429) or err.code >= 500:
@@ -92,8 +106,9 @@ def _pedir(ruta: str) -> str:
             e["peticiones"] += 1
             e["ultima"] = time.time()
             _guardar(e)
-    fichero.write_text(texto, encoding="utf-8")
-    return texto
+    fichero.parent.mkdir(parents=True, exist_ok=True)
+    fichero.write_bytes(datos)
+    return datos
 
 
 def _limpio(trozo: str) -> str:

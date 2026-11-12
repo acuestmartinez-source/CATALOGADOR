@@ -421,7 +421,14 @@ def catalogar(client, obra: dict, imagenes: list[Path], modelo: str = MODELO_POR
         mensajes.append({"role": "user", "content": resultados})
 
     texto = "\n".join(b.text for b in respuesta.content if b.type == "text")
-    ficha = extraer_json(texto)
+    ficha, comprobadas = extraer_json(texto), {}
+    if imagenes:  # D-1845: cada «misma estampa» de ukiyo-e.org, frente a la foto; en local, nada sale a la API
+        import visual
+
+        try:
+            ficha, comprobadas = visual.verificar(ficha, imagenes[0])
+        except Exception as e:  # noqa: BLE001 · una foto que no se lee no tumba una obra ya pagada
+            comprobadas = {"error": f"{type(e).__name__}"}
     return {
         "referencia": obra["referencia"],
         "version": "v4",
@@ -431,6 +438,7 @@ def catalogar(client, obra: dict, imagenes: list[Path], modelo: str = MODELO_POR
         "ficha": ficha,
         "para_web": F.para_web(ficha),
         "fuentes_verificadas": verificar_fuentes(ficha, vistas),
+        "verificacion_visual": comprobadas,
         "series_usadas": [m["clave"] for m in series or []],
         "parada": respuesta.stop_reason,
         "uso": uso,
