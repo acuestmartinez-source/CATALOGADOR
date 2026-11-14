@@ -1,4 +1,4 @@
-# Paso 4 · la verificación visual · 12/11/2026 (catalogador-0.7.0)
+# Paso 4 · la verificación visual · 12/11/2026 (catalogador-0.7.0; ADELANTE de la casa del 14/11/2026, «ADELANTE PASO 4»)
 
 La casa, el 12/11/2026: «La comparación visual de ukiyo-e es importante y construir los arreglos también»,
 y después «ADELANTE, SIGUE Y CONSTRUYE». Lo que pidió: comparar nuestra foto con la de ukiyo-e.org para depender
