@@ -21,6 +21,8 @@ def test_editor():
     assert mismo_editor("Kato Seibei", "Katōya Seibei (加藤屋清兵衛)")
     assert not mismo_editor("Iseya Ichibei", "Iseya Ichiemon (伊勢屋市右衛門)")
     assert not mismo_editor("", "Tenki")
+    assert mismo_editor("Fujiokaya Keijirō (Shōrindō),", "Fujiokaya Keijirō (Fuji-Kei)")
+    assert mismo_editor("Komiyama Shōhei (Tōshūdō)", "Komiyama Shōhei (小宮山昇平)")
 
 
 def test_anios():

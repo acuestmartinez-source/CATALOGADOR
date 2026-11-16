@@ -37,6 +37,11 @@ def mismo_editor(gestor: str | None, agente: str | None) -> bool:
     a, b = F.normalizar(gestor).replace(" ", ""), F.normalizar(agente).replace(" ", "")
     if a and b and (a in b or b in a):
         return True
+    # el nombre sin su paréntesis: «Fujiokaya Keijirō (Shōrindō)» = «Fujiokaya Keijirō (Fuji-Kei)»
+    a = F.normalizar((gestor or "").split("(")[0]).replace(" ", "").strip(",;")
+    b = F.normalizar((agente or "").split("(")[0]).replace(" ", "").strip(",;")
+    if len(a) >= 6 and len(b) >= 6 and (a in b or b in a):
+        return True
 
     def palabras(texto):
         return {re.sub(r"ya$", "", w) for w in F.normalizar(texto).split() if len(w) >= 3}
