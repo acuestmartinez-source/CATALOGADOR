@@ -54,7 +54,8 @@ def abrir_gestor() -> sqlite3.Connection:
     base = Path(os.environ.get("TDP_BASE", r"C:\dev\GESTOR_TDP\datos\tdp.sqlite"))
     if not base.exists():
         sys.exit(f"No encuentro la base del Gestor en {base}. Pon TDP_BASE en .env.")
-    con = sqlite3.connect(f"{base.as_uri()}?mode=ro", uri=True, check_same_thread=False)
+    # immutable: ni siquiera crea el -shm a su lado; se apunta a una copia de la noche, nunca a la base viva
+    con = sqlite3.connect(f"{base.as_uri()}?mode=ro&immutable=1", uri=True, check_same_thread=False)
     con.row_factory = sqlite3.Row
     return con
 
@@ -166,7 +167,7 @@ def orden_catalogar(args) -> None:
 
     con, carpeta = abrir_gestor(), carpeta_imagenes()
     referencias = args.solo or (leer_lista(args.lista) if args.lista else leer_lista(MUESTRA))
-    salida = RESULTADOS / CARPETA
+    salida = RESULTADOS / getattr(args, "carpeta", CARPETA)
     salida.mkdir(parents=True, exist_ok=True)
     obras, hechas = [], 0
     for ref in referencias:
@@ -342,6 +343,7 @@ def main(argv: list[str] | None = None) -> None:
     c.add_argument("--en-seco", action="store_true", help="dice qué haría, en qué grupos y cuánto costaría; no llama a la API")
     c.add_argument("--repetir", action="store_true", help="vuelve a hacer las que ya tienen resultado")
     c.add_argument("--paralelo", type=int, default=3)
+    c.add_argument("--carpeta", default=CARPETA, help="resultados/<carpeta>/ (por defecto, v4)")
     c.add_argument("--sin-web", action="store_true", help="solo la fase A")
     c.add_argument("--modelo", default=agente.MODELO_POR_DEFECTO)
     c.add_argument("--esfuerzo", default=agente.ESFUERZO, choices=["low", "medium", "high"])
