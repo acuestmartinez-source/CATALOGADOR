@@ -429,6 +429,9 @@ def catalogar(client, obra: dict, imagenes: list[Path], modelo: str = MODELO_POR
             ficha, comprobadas = visual.verificar(ficha, imagenes[0])
         except Exception as e:  # noqa: BLE001 · una foto que no se lee no tumba una obra ya pagada
             comprobadas = {"error": f"{type(e).__name__}"}
+    import anclar  # CT-06: los recuadros, sobre lo que el OCR lee en la hoja
+
+    ficha = anclar.anclar(ficha, bloques)
     return {
         "referencia": obra["referencia"],
         "version": "v4",
@@ -438,6 +441,7 @@ def catalogar(client, obra: dict, imagenes: list[Path], modelo: str = MODELO_POR
         "ficha": ficha,
         "para_web": F.para_web(ficha),
         "fuentes_verificadas": verificar_fuentes(ficha, vistas),
+        "museos": anclar.museos(ficha),
         "verificacion_visual": comprobadas,
         "series_usadas": [m["clave"] for m in series or []],
         "parada": respuesta.stop_reason,

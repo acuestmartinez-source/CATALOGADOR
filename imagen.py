@@ -140,8 +140,19 @@ COLORES = {  # el mismo color en la foto y en la tabla de la página de revisió
 }
 
 
+def _a_trazos(d: ImageDraw.ImageDraw, r: tuple, color: str, grosor: int, trazo: int = 8) -> None:
+    x0, y0, x1, y1 = r
+    for x in range(x0, x1, 2 * trazo):
+        d.line([(x, y0), (min(x + trazo, x1), y0)], fill=color, width=grosor)
+        d.line([(x, y1), (min(x + trazo, x1), y1)], fill=color, width=grosor)
+    for y in range(y0, y1, 2 * trazo):
+        d.line([(x0, y), (x0, min(y + trazo, y1))], fill=color, width=grosor)
+        d.line([(x1, y), (x1, min(y + trazo, y1))], fill=color, width=grosor)
+
+
 def anotar(ruta: Path, marcas: list[dict], lado: int = 1100) -> Image.Image:
-    """La foto con un cuadro de color por cada elemento identificado. marcas: [{campo, caja, etiqueta}]."""
+    """La foto con un cuadro de color por cada elemento identificado. marcas: [{campo, caja, etiqueta, estimada}];
+    `estimada` (opcional) lo pinta a trazos: el modelo dice que está ahí, pero el OCR no lo ha leído."""
     with Image.open(ruta) as im:
         im = im.convert("RGB")
     im.thumbnail((lado, lado))
@@ -162,7 +173,10 @@ def anotar(ruta: Path, marcas: list[dict], lado: int = 1100) -> Image.Image:
         if x1 <= x0 or y1 <= y0:
             continue
         r = (x0 * w // 1000, y0 * h // 1000, x1 * w // 1000, y1 * h // 1000)
-        d.rectangle(r, outline=color, width=grosor)
+        if m.get("estimada"):  # CT-06: un recuadro que el OCR no ha comprobado en la hoja va a trazos
+            _a_trazos(d, r, color, grosor)
+        else:
+            d.rectangle(r, outline=color, width=grosor)
         etiquetas.append((r, color, m.get("etiqueta") or COLORES.get(m.get("campo"), COLORES["otro"])[1]))
     for r, color, etiqueta in etiquetas:  # las palabras encima de todos los recuadros, para que ninguno las tape
         ancho = d.textlength(etiqueta, font=letra)

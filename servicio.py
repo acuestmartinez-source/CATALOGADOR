@@ -129,6 +129,7 @@ def ficha_de_intercambio(peticion: dict, r: dict) -> dict:
         datos[campo] = {"valor": F.valor(fi, campo) or None, "detalle": detalle, "fiabilidad": F.fiabilidad(fi, campo),
                         "nivel": F.nivel(fi, campo) or None, "como": d.get("como"), "fuentes": d.get("fuentes") or [],
                         "cajas": d.get("cajas") or [],
+                        "leido_en_hoja": d.get("leido_en_hoja"),
                         "lectura": {"autor": d.get("firma"), "editor": d.get("sello"),
                                     "censor": d.get("lectura") or d.get("sello")}.get(campo)}
         if campo == "titulo":
@@ -138,7 +139,8 @@ def ficha_de_intercambio(peticion: dict, r: dict) -> dict:
             "fases": r.get("fases"), "tipo_obra": fi.get("tipo_obra"), "datos": datos,
             "para_web": r.get("para_web") or F.para_web(fi),
             "vinculadas": [v for v in fi.get("vinculadas") or [] if isinstance(v, dict)],
-            "fuentes_verificadas": r.get("fuentes_verificadas") or {}, "anotada": None, "error": None}
+            "fuentes_verificadas": r.get("fuentes_verificadas") or {}, "museos": r.get("museos") or {},
+            "anotada": None, "error": None}
 
 
 REFERENCIA, PETICION = re.compile(r"TDP-[0-9]{6}"), re.compile(r"idn-[0-9]{6}")
@@ -211,7 +213,8 @@ PALABRAS = {"autor": "Autor", "titulo": "Título", "serie": "Serie", "editor": "
 def anotar(foto: Path, linea: dict, carpeta: Path) -> str | None:
     """La primera foto con un recuadro de color y su palabra por dato. Devuelve la ruta relativa a
     `de_catalogador/`, o None si no hay recuadros o no se pudo dibujar (la ficha sale igual)."""
-    marcas = [{"campo": "artista" if c == "autor" else c, "caja": caja, "etiqueta": PALABRAS[c]}
+    marcas = [{"campo": "artista" if c == "autor" else c, "caja": caja, "etiqueta": PALABRAS[c],
+               "estimada": not d.get("leido_en_hoja")}
               for c, d in linea["datos"].items() for caja in d.get("cajas") or []]
     if not marcas:
         return None

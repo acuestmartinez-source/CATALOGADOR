@@ -77,7 +77,8 @@ def _cajas(d) -> list:
 
 def marcas_de(fi: dict) -> list[dict]:
     """Los recuadros: los de cada dato; en fichas antiguas, también los de la firma y los sellos."""
-    marcas = [{"campo": COLOR[c], "caja": caja, "etiqueta": n} for c, n in CAMPOS for caja in _cajas(F.dato(fi, c))]
+    marcas = [{"campo": COLOR[c], "caja": caja, "etiqueta": n, "estimada": not F.dato(fi, c).get("leido_en_hoja")}
+              for c, n in CAMPOS for caja in _cajas(F.dato(fi, c))]
     if not any(m["campo"] == "artista" for m in marcas):
         marcas += [{"campo": "artista", "caja": caja, "etiqueta": "Autor"} for caja in _cajas(fi.get("firma"))]
     ya = {(m["campo"], tuple(m["caja"])) for m in marcas}
@@ -119,6 +120,8 @@ def obra(r: dict, g: dict, carpeta_img: Path) -> str:
                  "censor": d.get("lectura") or d.get("sello"), "tecnica": d.get("formato"),
                  "titulo": "título construido a partir de la imagen" if d.get("construido") else None,
                  "serie": F.detalle_serie(fi)}.get(campo)
+        if d.get("leido_en_hoja"):  # CT-06
+            extra = f"{extra or ''} · leído en la hoja: {d['leido_en_hoja']}".lstrip(" ·")
         fiab = F.fiabilidad(fi, campo)
         c = comp_de.get(campo)
         gestor_txt = (f'<span class="ok">✓ coincide</span>' if c else f'<span class="mal">✗ {e(gestor_de[campo])}</span>'

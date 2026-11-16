@@ -67,6 +67,13 @@ def _pedir(ruta: str) -> str:
     return _traer(url, CACHE / (hashlib.sha256(url.encode()).hexdigest()[:24] + ".html")).decode("utf-8", errors="replace")
 
 
+def en_cache(id_: str) -> bool:
+    """¿Está ya la ficha en la caché? Mirarlo no pide nada a ukiyo-e.org."""
+    id_ = id_.split("/image/")[-1].strip("/")
+    url = f"{BASE}/image/{id_}"
+    return (CACHE / (hashlib.sha256(url.encode()).hexdigest()[:24] + ".html")).exists()
+
+
 def imagen(id_: str) -> bytes:
     """La imagen de una ficha (D-1845), de data.ukiyo-e.org: su robots.txt solo cierra /uploads/. Con el mismo
     freno, el mismo tope y la caché para siempre de todo lo demás."""
