@@ -24,6 +24,34 @@ def test_sin_coincidencia_queda_como_estaba_y_sin_comprobar():
     assert "leido_en_hoja" not in fi["editor"]  # un carácter solo no basta
 
 
+def test_solo_con_caracteres_genericos_no_se_ancla():
+    fi = {"autor": {"firma": "画印", "cajas": []}}
+    anclar.anclar(fi, [{"caja": [1, 1, 9, 9], "texto": "国画印"}])
+    assert "leido_en_hoja" not in fi["autor"]
+
+
+def test_un_bloque_no_sirve_a_dos_datos_salvo_titulo_y_serie():
+    fi = {"titulo": {"japones": "東海道五十", "cajas": []}, "serie": {"japones": "東海道五十", "cajas": []},
+          "editor": {"sello": "東海道", "cajas": []}}
+    anclar.anclar(fi, OCR)
+    assert fi["titulo"]["leido_en_hoja"] == fi["serie"]["leido_en_hoja"] == "東海道五十"
+    assert "leido_en_hoja" not in fi["editor"]
+
+
+def test_museos_no_pide_nada_con_urls_mal_escritas(monkeypatch):
+    pedidas = []
+    monkeypatch.setattr(anclar.ukiyoe, "en_cache", lambda u: True)
+    monkeypatch.setattr(anclar.ukiyoe, "ficha", lambda i: pedidas.append(i) or {"ficha_original": "https://m.org/1"})
+    fi = {"vinculadas": [{"url": "http://www.ukiyo-e.org/image/mfa/sc1"}]}
+    assert anclar.museos(fi) == {"http://www.ukiyo-e.org/image/mfa/sc1": "https://m.org/1"} and pedidas == ["mfa/sc1"]
+
+
+def test_museos_no_tumba_la_obra(monkeypatch):
+    monkeypatch.setattr(anclar.ukiyoe, "en_cache", lambda u: True)
+    monkeypatch.setattr(anclar.ukiyoe, "ficha", lambda i: 1 / 0)
+    assert anclar.museos({"vinculadas": [{"url": "https://ukiyo-e.org/image/a/b"}]}) == {}
+
+
 def test_la_serie_casa_con_mitad_de_sus_caracteres():
     fi = {"serie": {"japones": "東海道五十三次之内", "cajas": []}}
     anclar.anclar(fi, OCR)
@@ -32,6 +60,6 @@ def test_la_serie_casa_con_mitad_de_sus_caracteres():
 
 def test_museos_solo_mira_la_cache(monkeypatch):
     monkeypatch.setattr(anclar.ukiyoe, "en_cache", lambda u: u.endswith("mfa/sc1"))
-    monkeypatch.setattr(anclar.ukiyoe, "ficha", lambda u: {"ficha_original": "https://collections.mfa.org/objects/1"})
+    monkeypatch.setattr(anclar.ukiyoe, "ficha", lambda i: {"ficha_original": "https://collections.mfa.org/objects/1"})
     fi = {"vinculadas": [{"url": "https://ukiyo-e.org/image/mfa/sc1"}, {"url": "https://ukiyo-e.org/image/met/2"}]}
     assert anclar.museos(fi) == {"https://ukiyo-e.org/image/mfa/sc1": "https://collections.mfa.org/objects/1"}

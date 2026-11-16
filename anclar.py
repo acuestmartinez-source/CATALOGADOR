@@ -15,7 +15,8 @@ import ukiyoe
 
 TEXTO = {"autor": ("firma",), "titulo": ("japones",), "serie": ("japones",), "editor": ("sello",),
          "censor": ("lectura", "sello")}
-MINIMO = 2  # caracteres en común; uno solo (画, 版) casa con cualquier cosa
+MINIMO = 2  # caracteres en común, y al menos uno que no salga en cualquier firma o sello
+GENERICOS = set("画筆印版改")  # 画 casa con todas las firmas: 画 y 筆 solos no anclan nada
 
 
 def _texto(d: dict, claves) -> str:
@@ -30,20 +31,23 @@ def bloque_de(texto: str, bloques: list[dict]) -> dict | None:
         return None
     mejor, comun = None, 0
     for b in bloques or []:
-        n = len(letras & set(F._cjk(b.get("texto"))))
-        if n > comun:
-            mejor, comun = b, n
+        comunes = letras & set(F._cjk(b.get("texto")))
+        if not b.get("usado") and comunes - GENERICOS and len(comunes) > comun:
+            mejor, comun = b, len(comunes)
     return mejor if comun >= max(MINIMO, len(letras) / 2) else None
 
 
 def anclar(ficha: dict | None, bloques: list[dict]) -> dict | None:
+    """Un bloque sirve a un solo dato, salvo título y serie, que a menudo comparten cartucho."""
+    libres = [dict(b) for b in bloques or []]
     for campo, claves in TEXTO.items():
         d = (ficha or {}).get(campo)
         if not isinstance(d, dict):
             continue
-        b = bloque_de(_texto(d, claves), bloques)
+        b = bloque_de(_texto(d, claves), libres)
         if b is None:
             continue
+        b["usado"] = campo not in ("titulo",)  # el de la serie aún puede ser el del título
         d["leido_en_hoja"] = b["texto"]
         if d.get("cajas") != [b["caja"]]:
             d["cajas_modelo"] = d.get("cajas") or []
@@ -57,8 +61,11 @@ def museos(ficha: dict | None) -> dict[str, str]:
     urls |= {u for c in F.ESENCIALES for u in F.dato(ficha, c).get("fuentes") or [] if isinstance(u, str)}
     salida = {}
     for u in sorted(x for x in urls if x and "ukiyo-e.org/image/" in x):
-        if ukiyoe.en_cache(u):
-            museo = ukiyoe.ficha(u).get("ficha_original") or ""
-            if museo.startswith("http") and "ukiyo-e.org" not in museo:
-                salida[u] = museo
+        try:  # una ficha rara no tumba una obra ya pagada
+            if ukiyoe.en_cache(u):
+                museo = ukiyoe.ficha(ukiyoe._id(u)).get("ficha_original") or ""
+                if museo.startswith("http") and "ukiyo-e.org" not in museo:
+                    salida[u] = museo
+        except Exception:  # noqa: BLE001
+            continue
     return salida

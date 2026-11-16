@@ -214,7 +214,7 @@ def anotar(foto: Path, linea: dict, carpeta: Path) -> str | None:
     """La primera foto con un recuadro de color y su palabra por dato. Devuelve la ruta relativa a
     `de_catalogador/`, o None si no hay recuadros o no se pudo dibujar (la ficha sale igual)."""
     marcas = [{"campo": "artista" if c == "autor" else c, "caja": caja, "etiqueta": PALABRAS[c],
-               "estimada": not d.get("leido_en_hoja")}
+               "estimada": c != "tecnica" and not d.get("leido_en_hoja")}
               for c, d in linea["datos"].items() for caja in d.get("cajas") or []]
     if not marcas:
         return None

@@ -77,7 +77,8 @@ def _cajas(d) -> list:
 
 def marcas_de(fi: dict) -> list[dict]:
     """Los recuadros: los de cada dato; en fichas antiguas, también los de la firma y los sellos."""
-    marcas = [{"campo": COLOR[c], "caja": caja, "etiqueta": n, "estimada": not F.dato(fi, c).get("leido_en_hoja")}
+    marcas = [{"campo": COLOR[c], "caja": caja, "etiqueta": n,
+               "estimada": c != "tecnica" and not F.dato(fi, c).get("leido_en_hoja")}
               for c, n in CAMPOS for caja in _cajas(F.dato(fi, c))]
     if not any(m["campo"] == "artista" for m in marcas):
         marcas += [{"campo": "artista", "caja": caja, "etiqueta": "Autor"} for caja in _cajas(fi.get("firma"))]

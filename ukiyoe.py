@@ -64,20 +64,27 @@ def _pedir(ruta: str) -> str:
     if ruta.startswith("/upload") or ".." in ruta:
         raise ValueError("/upload/ está prohibido por robots.txt de ukiyo-e.org")
     url = BASE + ruta
-    return _traer(url, CACHE / (hashlib.sha256(url.encode()).hexdigest()[:24] + ".html")).decode("utf-8", errors="replace")
+    return _traer(url, _fichero(url)).decode("utf-8", errors="replace")
+
+
+def _fichero(url: str) -> Path:
+    return CACHE / (hashlib.sha256(url.encode()).hexdigest()[:24] + ".html")
+
+
+def _id(id_o_url: str) -> str:
+    """«mfa/sc1» de cualquier forma de escribirlo: con o sin https, con www, o ya limpio."""
+    return str(id_o_url).split("/image/")[-1].strip("/")
 
 
 def en_cache(id_: str) -> bool:
     """¿Está ya la ficha en la caché? Mirarlo no pide nada a ukiyo-e.org."""
-    id_ = id_.split("/image/")[-1].strip("/")
-    url = f"{BASE}/image/{id_}"
-    return (CACHE / (hashlib.sha256(url.encode()).hexdigest()[:24] + ".html")).exists()
+    return _fichero(f"{BASE}/image/{_id(id_)}").exists()
 
 
 def imagen(id_: str) -> bytes:
     """La imagen de una ficha (D-1845), de data.ukiyo-e.org: su robots.txt solo cierra /uploads/. Con el mismo
     freno, el mismo tope y la caché para siempre de todo lo demás."""
-    id_ = id_.removeprefix(f"{BASE}/image/").removeprefix("/image/").strip("/")
+    id_ = _id(id_)
     m = re.search(r'<div class="col-xs-12 col-md-6 imageholder">.*?<img[^>]+src="([^"]+)"', _pedir(f"/image/{id_}"), re.S)
     url = m.group(1) if m else ""
     if not url.startswith("https://data.ukiyo-e.org/") or "/uploads/" in url:
@@ -149,7 +156,7 @@ def buscar(consulta: str, limite: int = 24) -> list[dict]:
 
 def ficha(id_: str) -> dict:
     """Una ficha: título, artista con kanji, fecha, enlace al museo, fuente y las estampas parecidas con su %."""
-    id_ = id_.removeprefix(f"{BASE}/image/").removeprefix("/image/").strip("/")
+    id_ = _id(id_)
     texto = _pedir(f"/image/{id_}")
 
     def campo(clase):

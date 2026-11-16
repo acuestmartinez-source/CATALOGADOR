@@ -13,6 +13,7 @@ import re
 import time
 from pathlib import Path
 
+import anclar
 import ficha as F
 
 RAIZ = Path(__file__).resolve().parent
@@ -429,9 +430,7 @@ def catalogar(client, obra: dict, imagenes: list[Path], modelo: str = MODELO_POR
             ficha, comprobadas = visual.verificar(ficha, imagenes[0])
         except Exception as e:  # noqa: BLE001 · una foto que no se lee no tumba una obra ya pagada
             comprobadas = {"error": f"{type(e).__name__}"}
-    import anclar  # CT-06: los recuadros, sobre lo que el OCR lee en la hoja
-
-    ficha = anclar.anclar(ficha, bloques)
+    ficha = anclar.anclar(ficha, bloques)  # CT-06: los recuadros, sobre lo que el OCR lee en la hoja
     return {
         "referencia": obra["referencia"],
         "version": "v4",
