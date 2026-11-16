@@ -97,24 +97,27 @@ def _json(fuente: str, url: str) -> dict:
 # --- Cada fuente: un generador de fichas. `conocidos` son los id ya listados, para no volver a pedirlos. ---
 
 def _aic(conocidos: set) -> iter:
-    params = json.dumps({"query": {"bool": {"must": [
-        {"term": {"is_public_domain": True}},
-        {"match": {"place_of_origin": "Japan"}},
-        {"match": {"artwork_type_title": "Print"}}]}}})
+    # La búsqueda anónima no pasa de from+size=1000 (TooManyResultsException, un 403): se avanza por id,
+    # ordenado, pidiendo siempre la primera página de «id mayor que el último visto».
     campos = "id,title,artist_title,date_display,image_id,is_public_domain"
-    pagina = 1
+    ultimo = 0
     while True:
+        params = json.dumps({"query": {"bool": {"must": [
+            {"term": {"is_public_domain": True}},
+            {"match": {"place_of_origin": "Japan"}},
+            {"match": {"artwork_type_title": "Print"}},
+            {"range": {"id": {"gt": ultimo}}}]}}, "sort": [{"id": "asc"}]})
         d = _json("aic", "https://api.artic.edu/api/v1/artworks/search?" + urllib.parse.urlencode(
-            {"params": params, "fields": campos, "limit": 100, "page": pagina}))
+            {"params": params, "fields": campos, "limit": 100}))
         for o in d["data"]:
             libre = o.get("is_public_domain") is True and o.get("image_id")
             yield {"fuente": "aic", "id": str(o["id"]), "titulo": o.get("title"), "artista": o.get("artist_title"),
                    "fecha": o.get("date_display"), "url_ficha": f"https://www.artic.edu/artworks/{o['id']}",
                    "url_imagen": f"https://www.artic.edu/iiif/2/{o['image_id']}/full/843,/0/default.jpg" if libre else None,
                    "licencia": "CC0" if libre else "no consta"}
-        if pagina >= d["pagination"]["total_pages"]:
+        if len(d["data"]) < 100:
             return
-        pagina += 1
+        ultimo = max(o["id"] for o in d["data"])
 
 
 def _met(conocidos: set) -> iter:
@@ -244,6 +247,9 @@ def descargar(fuente: str, tope: int | None = None) -> int:
                 except urllib.error.HTTPError as err:
                     print(f"{fuente} {f['id']}: {err.code}, se salta", file=sys.stderr)
                     continue
+                except OSError as err:  # red caída o tiempo agotado: se deja esta pasada, sin reintentar
+                    print(f"{fuente} {f['id']}: {err}; se deja esta pasada", file=sys.stderr)
+                    break
                 fichero.parent.mkdir(parents=True, exist_ok=True)
                 fichero.write_bytes(datos)
                 nuevas += 1
@@ -285,3 +291,5 @@ if __name__ == "__main__":
             sys.exit(__doc__)
     except Parado as p:
         sys.exit(f"PARADO: {p}")
+    except OSError as err:  # red caída o tiempo agotado: lo hecho queda guardado; se reanuda en la próxima pasada
+        sys.exit(f"CORTADO por la red: {err}")

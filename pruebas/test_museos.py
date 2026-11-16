@@ -50,11 +50,30 @@ def test_aic_arma_la_consulta_y_filtra_lo_que_no_es_libre(red):
     r = red([("api.artic.edu", AIC)])
     assert museos.listar("aic") == 2
     url = urllib.parse.unquote_plus(r.pedidas[0].full_url)
-    assert '"is_public_domain": true' in url and '"place_of_origin": "Japan"' in url and '"artwork_type_title": "Print"' in url
+    assert '"is_public_domain": true' in url and '"sort": [{"id": "asc"}]' in url and '"gt": 0' in url and '"place_of_origin": "Japan"' in url and '"artwork_type_title": "Print"' in url
     assert r.pedidas[0].get_header("Aic-user-agent") == museos.AGENTE
     f1, f2 = museos.fichas("aic")
     assert f1["url_imagen"] == "https://www.artic.edu/iiif/2/abc/full/843,/0/default.jpg" and f1["licencia"] == "CC0"
     assert f2["url_imagen"] is None and f2["licencia"] == "no consta"
+
+
+def test_aic_avanza_por_id_sin_pasar_de_mil(red):
+    lleno = {"data": [{"id": i, "image_id": "x", "is_public_domain": True} for i in range(1, 101)]}
+    r = red([("gt%22%3A+0%7D", lleno), ("gt%22%3A+100%7D", AIC)])
+    assert museos.listar("aic") == 100  # el 1 y el 2 de la segunda página ya estaban
+    assert all("page=" not in p.full_url for p in r.pedidas) and len(r.pedidas) == 2
+
+
+def test_un_corte_de_red_deja_la_pasada_sin_reintentar(red, monkeypatch):
+    red([("api.artic.edu", AIC)])
+    museos.listar("aic")
+
+    def caida(pedido, timeout=None):
+        caida.veces += 1
+        raise TimeoutError("se agotó el tiempo")
+    caida.veces = 0
+    monkeypatch.setattr(museos.urllib.request, "urlopen", caida)
+    assert museos.descargar("aic") == 0 and caida.veces == 1
 
 
 def test_met_usa_la_busqueda_nueva_y_mira_cada_ficha(red):
