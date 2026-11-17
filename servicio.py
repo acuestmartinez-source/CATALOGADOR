@@ -140,6 +140,7 @@ def ficha_de_intercambio(peticion: dict, r: dict) -> dict:
             "para_web": r.get("para_web") or F.para_web(fi),
             "vinculadas": [v for v in fi.get("vinculadas") or [] if isinstance(v, dict)],
             "fuentes_verificadas": r.get("fuentes_verificadas") or {}, "museos": r.get("museos") or {},
+            "por_imagen": r.get("por_imagen") or [],
             "anotada": None, "error": None}
 
 

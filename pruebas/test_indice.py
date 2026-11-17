@@ -38,3 +38,10 @@ def test_buscar_pone_primero_la_misma_y_baja_las_dudosas_flojas(monkeypatch):
         "puntos": puntos[s.decode()], "veredicto": indice.visual.veredicto(puntos[s.decode()])})
     r = indice.buscar(Path("foto.jpg"), k=3, indice=(v, fichas))
     assert [(x["fichero"], x["veredicto"]) for x in r] == [("b", "misma"), ("c", "dudosa"), ("a", "no")]
+
+
+def test_parecidas_solo_da_misma_y_dudosa_y_nunca_tumba_la_obra(monkeypatch):
+    monkeypatch.setattr(indice, "buscar", lambda f, k: [{"veredicto": "misma", "titulo": "A"}, {"veredicto": "no"}])
+    assert [d["titulo"] for d in indice.parecidas(Path("x"))] == ["A"]
+    monkeypatch.setattr(indice, "buscar", lambda f, k: 1 / 0)
+    assert indice.parecidas(Path("x")) == []

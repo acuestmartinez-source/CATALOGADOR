@@ -9,6 +9,7 @@ DINOv2-small (ONNX, CPU) da un vector por imagen y el coseno ordena; luego SIFT 
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -17,7 +18,7 @@ from PIL import Image
 
 import visual
 
-RAIZ = Path(__file__).resolve().parent
+RAIZ = Path(os.environ.get("TDP_INDICE") or Path(__file__).resolve().parent)  # en el NAS, la carpeta montada
 MODELO = RAIZ / "datos" / "modelos" / "dinov2-small" / "model.onnx"
 CARPETA = RAIZ / "datos" / "indice"
 VECTORES, FICHAS = CARPETA / "vectores.npy", CARPETA / "fichas.jsonl"
@@ -100,6 +101,15 @@ def buscar(foto: Path, k: int = 5, indice=None) -> list[dict]:
         salida.append(d)
     orden = {"misma": 0, "dudosa": 1, "no": 2}
     return sorted(salida, key=lambda d: (orden[d["veredicto"]], -d["parecido"]))
+
+
+def parecidas(foto: Path, k: int = 5) -> list[dict]:
+    """Para la salida de cada obra: solo «misma» y «dudosa». Sin índice o con un fallo, nada: no tumba la obra."""
+    try:
+        return [{c: d.get(c) for c in ("fuente", "titulo", "artista", "fecha", "url_ficha", "licencia", "veredicto",
+                                       "puntos", "parecido")} for d in buscar(foto, k) if d["veredicto"] != "no"]
+    except Exception:  # noqa: BLE001
+        return []
 
 
 if __name__ == "__main__":
