@@ -6,3 +6,4 @@ secretos/
 .env
 __pycache__/
 *.pyc
+indice/
