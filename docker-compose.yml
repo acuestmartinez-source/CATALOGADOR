@@ -10,6 +10,7 @@ services:
       TDP_IMAGENES: /imagenes
       TDP_INTERCAMBIO: /intercambio
       TDP_NDL_OCR: /opt/ndlkotenocr-lite
+      TDP_INDICE: /indice  # CT-08: modelo, índice e imágenes de los museos, de solo lectura
       TZ: Europe/Madrid  # el horario (--desde, --hasta) es el de Madrid, no la UTC del contenedor
       ANTHROPIC_WORKSPACE_ID: ${ANTHROPIC_WORKSPACE_ID:-}
     secrets:
@@ -17,6 +18,7 @@ services:
     volumes:
       - ${TDP_IMAGENES_EN_EL_NAS:?pon la carpeta de imágenes del Gestor}:/imagenes:ro
       - ${TDP_INTERCAMBIO_EN_EL_NAS:?pon la carpeta _intercambio del Gestor}:/intercambio
+      - ${TDP_INDICE_EN_EL_NAS:-./indice}:/indice:ro
       - catalogador_datos:/app/datos
       - catalogador_resultados:/app/resultados
     command: ["python", "servicio.py", "--desde", "${CATALOGADOR_DESDE:-06:00}", "--hasta", "${CATALOGADOR_HASTA:-13:00}"]

@@ -16,6 +16,7 @@ cómo se identificó cada dato, de qué fuente sale y con qué fiabilidad, y las
 - 0.6.3, D-1843 y D-1844: la memoria de series aprende lo que confirma una persona; la biblioteca sale saneada y `catalogar` ya no lee pistas (`docs/10_paso_3.md`).
 - 0.7.0, D-1845: cada «misma estampa» de ukiyo-e.org se comprueba con la foto, con OpenCV y en local (`docs/12_verificacion_visual.md`).
 - 0.8.0, CT-06 (16/11/2026, aprobada y desplegada con el sí de la casa): los recuadros de firma, título, serie y sellos se anclan a lo que el OCR local lee en la hoja (`leido_en_hoja`); lo no comprobado se pinta a trazos; `museos` da la ficha del museo detrás de cada ficha de ukiyo-e.org, solo desde la caché (`anclar.py`).
+- 0.9.0, CT-08 (17/11/2026, desplegada con el sí de la casa): `museos.py` baja despacio las estampas de dominio público de Met, Cleveland, Rijksmuseum y AIC; `indice.py` las indexa con DINOv2-small (ONNX, CPU) y busca por la foto de la obra, con la comprobación geométrica de siempre y un umbral de «dudosa» propio (100 puntos). Medido: 113 de 120 estampas del índice, fotografiadas peor, salen las primeras; en las 161 de la prueba ciega solo 2 están en lo bajado (falta AIC).
 - Análisis crítico, fuentes y vínculos SKU: `docs/04_analisis_critico.md`.
 - Historia: `docs/00` (estudio), `01` (piloto), `02` (v2 y decisiones P-11 a P-25), `03` (resultados v2).
 

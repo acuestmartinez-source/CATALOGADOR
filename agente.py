@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 
 import anclar
+import indice
 import ficha as F
 
 RAIZ = Path(__file__).resolve().parent
@@ -441,6 +442,7 @@ def catalogar(client, obra: dict, imagenes: list[Path], modelo: str = MODELO_POR
         "para_web": F.para_web(ficha),
         "fuentes_verificadas": verificar_fuentes(ficha, vistas),
         "museos": anclar.museos(ficha),
+        "por_imagen": indice.parecidas(imagenes[0]) if imagenes else [],  # CT-08: el índice propio
         "verificacion_visual": comprobadas,
         "series_usadas": [m["clave"] for m in series or []],
         "parada": respuesta.stop_reason,
