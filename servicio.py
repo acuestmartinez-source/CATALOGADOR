@@ -194,8 +194,9 @@ def serie_conocida(p: dict) -> str | None:
 
 texto_limpio = biblioteca.texto_limpio  # el saneado de D-1787, uno solo para todo
 
-#: Lo que nunca sale en una parecida de la casa, aunque el Gestor lo mandara: una referencia o una dirección.
-NO_SALE = re.compile(r"TDP-\d|idn-|/|https?:|www\.", re.IGNORECASE)
+#: Lo que nunca sale en una parecida de la casa, aunque el Gestor lo mandara: una referencia (escrita como
+#: sea), una dirección, un correo o un teléfono. La misma regla que `_NO_VIAJA` de IDENTIFICACION (0.13.0).
+NO_SALE = re.compile(r"TDP[ _-]?\d|idn-|/|https?:|www\.|@|\d{9,}", re.IGNORECASE)
 
 
 def parecidas_de_la_casa(p: dict) -> list[str]:

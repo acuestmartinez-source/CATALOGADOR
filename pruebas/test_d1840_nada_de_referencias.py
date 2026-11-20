@@ -178,7 +178,8 @@ def test_las_parecidas_de_la_casa_salen_sin_referencia_ni_direccion(tmp_path, mo
     cola = inter / "para_catalogador" / "cola.jsonl"
     buena = "en la casa hay una parecida ya catalogada (parecido 0,93): artista Hiroshige, serie Tokaido"
     pistas = [{"nota": buena}, {"nota": "parecida TDP-004512, serie Tokaido"},
-              {"nota": "mira /obras/x"}, {"url": "https://ukiyo-e.org/image/a/b", "nota": "hallada a mano"}]
+              {"nota": "mira /obras/x"}, {"nota": "serie de alguien" + "@" + "ejemplo.invalid"},
+              {"nota": "serie " + "1" * 9}, {"nota": "como tdp_000123"}, {"url": "https://ukiyo-e.org/image/a/b", "nota": "hallada a mano"}]
     lineas = cola.read_text(encoding="utf-8").splitlines()
     cola.write_text("\n".join(json.dumps({**json.loads(l), "pistas": pistas}, ensure_ascii=False)
                               if '"id_peticion"' in l else l for l in lineas) + "\n", encoding="utf-8")
@@ -189,5 +190,6 @@ def test_las_parecidas_de_la_casa_salen_sin_referencia_ni_direccion(tmp_path, mo
     textos = _textos(cliente)
     assert any("Parecidas de la casa" in t and buena in t for t in textos)
     enviado = json.dumps(cliente.enviadas, ensure_ascii=False, default=str)
-    for no in ("TDP-004512", "/obras/x", "ukiyo-e.org/image/a/b", "hallada a mano"):
+    for no in ("TDP-004512", "/obras/x", "ukiyo-e.org/image/a/b", "hallada a mano", "ejemplo.invalid",
+               "1" * 9, "tdp_000123"):
         assert no not in enviado
