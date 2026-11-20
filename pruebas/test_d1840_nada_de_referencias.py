@@ -54,7 +54,7 @@ def _sin_nada_de_la_peticion(cliente, inter=None):
     prohibido = REFERENCIAS.findall(texto)
     for p in servicio.leer_jsonl(inter / "para_catalogador" / "cola.jsonl") if inter else []:
         prohibido += [x for x in (p["pedido_en"], p.get("pedido_por"), *(Path(r).name for r in p["imagenes"]),
-                                  *(q.get("nota") or "" for q in p.get("pistas") or [])) if x and x in texto]
+                                  *(q.get("nota") or "" for q in p.get("pistas") or [] if "url" in q)) if x and x in texto]
     assert cliente.enviadas and not prohibido, " | ".join(prohibido)
 
 
@@ -169,3 +169,25 @@ def test_la_firma_y_los_sellos_aceptados_pasan_por_el_saneado_antes_de_la_biblio
     servicio.Servicio(inter, imagenes).vuelta()
     assert biblioteca.leer("firma") == []
     assert [f["nombre"] for f in biblioteca.leer("sello")] == [": Echizenya Kajū"]
+
+
+def test_las_parecidas_de_la_casa_salen_sin_referencia_ni_direccion(tmp_path, monkeypatch):
+    """D-2726 del Gestor (firmada por la casa el 20/11/2026): la pista sin `url` sale como «parecidas de la casa»;
+    la que trae `url`, y la que lleva una referencia o una dirección dentro, no salen."""
+    inter, imagenes = _montar(tmp_path, monkeypatch)
+    cola = inter / "para_catalogador" / "cola.jsonl"
+    buena = "en la casa hay una parecida ya catalogada (parecido 0,93): artista Hiroshige, serie Tokaido"
+    pistas = [{"nota": buena}, {"nota": "parecida TDP-004512, serie Tokaido"},
+              {"nota": "mira /obras/x"}, {"url": "https://ukiyo-e.org/image/a/b", "nota": "hallada a mano"}]
+    lineas = cola.read_text(encoding="utf-8").splitlines()
+    cola.write_text("\n".join(json.dumps({**json.loads(l), "pistas": pistas}, ensure_ascii=False)
+                              if '"id_peticion"' in l else l for l in lineas) + "\n", encoding="utf-8")
+    cliente = _Cliente([_final(PRIMERA)] * 6)
+    monkeypatch.setattr(agente, "catalogar", CATALOGAR_DE_VERDAD)
+    monkeypatch.setattr(agente, "cliente", lambda: cliente)
+    servicio.Servicio(inter, imagenes).vuelta()
+    textos = _textos(cliente)
+    assert any("Parecidas de la casa" in t and buena in t for t in textos)
+    enviado = json.dumps(cliente.enviadas, ensure_ascii=False, default=str)
+    for no in ("TDP-004512", "/obras/x", "ukiyo-e.org/image/a/b", "hallada a mano"):
+        assert no not in enviado

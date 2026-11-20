@@ -194,6 +194,19 @@ def serie_conocida(p: dict) -> str | None:
 
 texto_limpio = biblioteca.texto_limpio  # el saneado de D-1787, uno solo para todo
 
+#: Lo que nunca sale en una parecida de la casa, aunque el Gestor lo mandara: una referencia o una dirección.
+NO_SALE = re.compile(r"TDP-\d|idn-|/|https?:|www\.", re.IGNORECASE)
+
+
+def parecidas_de_la_casa(p: dict) -> list[str]:
+    """Las pistas sin `url` de la petición: obras parecidas que la casa ya tiene catalogadas, solo con su artista,
+    su serie y su parecido (D-2726 del Gestor, firmada por la casa el 20/11/2026). Las que traen `url` (páginas
+    encontradas a mano) siguen sin salir (D-1840). Cinco como mucho, saneadas, y fuera cualquiera con una
+    referencia o una dirección dentro."""
+    notas = (texto_limpio(q.get("nota"), 200) for q in p.get("pistas") or []
+             if isinstance(q, dict) and set(q) == {"nota"})
+    return [n for n in notas if n and not NO_SALE.search(n)][:5]
+
 
 def _sin_fecha(texto: str) -> str | None:
     """Un fichero del intercambio salvo el `escrito_en` de su cabecera: lo que se compara para no
@@ -321,9 +334,9 @@ class Servicio:
             if self.client is None:
                 self.client = agente.cliente()
             obra = {"referencia": p["referencia"], "alto_cm": p.get("alto_cm"), "ancho_cm": p.get("ancho_cm")}
-            # D-1840: de la petición solo salen las fotos, las medidas y la serie conocida (D-991 del Gestor); las
-            # `pistas` del contrato se leen y no se mandan
-            pedir = dict(series=series, serie_conocida=serie_conocida(p))
+            # D-1840: de la petición solo salen las fotos, las medidas, la serie conocida (D-991 del Gestor) y las
+            # parecidas de la casa sin referencia (D-2726 del Gestor); las pistas con `url` se leen y no se mandan
+            pedir = dict(series=series, serie_conocida=serie_conocida(p), parecidas=parecidas_de_la_casa(p))
             r = agente.catalogar(self.client, obra, fotos, hermana=hermana, **pedir)
             motivo = hermana and F.contradice(r.get("ficha"), hermana)
             if motivo:  # D-1799: algo no cuadra con la primera; se repite completa y se paga la suma
