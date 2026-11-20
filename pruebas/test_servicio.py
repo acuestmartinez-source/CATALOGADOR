@@ -16,13 +16,15 @@ import servicio  # noqa: E402
 CONTRATOS = Path(__file__).resolve().parents[1] / "contratos" / "intercambio"
 
 
-def _montar(tmp_path, monkeypatch):
+def _montar(tmp_path, monkeypatch, peticiones=2):
     inter = tmp_path / "_intercambio"
     shutil.copytree(CONTRATOS, inter)
     (inter / "de_catalogador").mkdir(exist_ok=True)
     for f in (inter / "de_catalogador").glob("*.jsonl"):
         f.unlink()
     (inter / "para_catalogador" / "biblioteca_correcciones.jsonl").unlink()  # cada prueba pone las suyas
+    cola = inter / "para_catalogador" / "cola.jsonl"  # las pruebas de siempre, con las dos primeras del ejemplo
+    cola.write_text("".join(cola.read_text(encoding="utf-8").splitlines(keepends=True)[:1 + peticiones]), encoding="utf-8", newline="")
     imagenes = tmp_path / "IMAGENES"
     for p in servicio.leer_jsonl(inter / "para_catalogador" / "cola.jsonl"):
         for r in p["imagenes"]:
@@ -259,3 +261,12 @@ def test_la_ficha_se_escribe_antes_que_su_lista_o_su_error(tmp_path, monkeypatch
         ficha = next(i for i, o in enumerate(orden) if o[:2] == ("fichas", idp))
         final = next(i for i, o in enumerate(orden) if o[0] == "estado" and o[1] == idp and o[2] in ("lista", "error"))
         assert ficha < final, (idp, orden)
+
+
+def test_la_tercera_del_contrato_trae_una_parecida_de_la_casa_y_se_atiende(tmp_path, monkeypatch):
+    """La fila de solo `nota` del ejemplo que se copia del Gestor (D-2726): sale como parecida y la petición se atiende."""
+    inter, imagenes = _montar(tmp_path, monkeypatch, peticiones=3)
+    tercera = servicio.leer_jsonl(inter / "para_catalogador" / "cola.jsonl")[2]
+    assert len(servicio.parecidas_de_la_casa(tercera)) == 1
+    servicio.Servicio(inter, imagenes).vuelta()
+    assert "idn-000003" in [f["id_peticion"] for f in servicio.leer_jsonl(inter / "de_catalogador" / "fichas.jsonl")]
